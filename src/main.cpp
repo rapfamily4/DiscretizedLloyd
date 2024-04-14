@@ -17,7 +17,7 @@
 #include "model.hpp"
 #include "consts.hpp"
 
-#define REGIONS_NUMBER 53
+#define DEFAULT_REGIONS_NUMBER 16
 
 
 DijkstraPartitioner partitioner;
@@ -145,7 +145,9 @@ void initPartitioner() {
     if (denseGraph) model.denseVertexAdjacency(adjacency, edgeWeights);
     else model.vertexAdjacency(adjacency, edgeWeights);
 
-    partitioner = DijkstraPartitioner(nodeWeights, adjacency, edgeWeights, REGIONS_NUMBER);
+    int regionsNumber = partitioner.getSeeds().size();
+    if (regionsNumber == 0) regionsNumber = DEFAULT_REGIONS_NUMBER;
+    partitioner = DijkstraPartitioner(nodeWeights, adjacency, edgeWeights, regionsNumber);
 }
 
 void runPartitioner(igl::opengl::ViewerData& data) {
@@ -246,15 +248,12 @@ bool keyboardInputCallback(igl::opengl::glfw::Viewer& viewer, unsigned char key,
 
         case 'R':
         case 'r':
-            if (modifier == 0) {
-                relaxPartitioner(viewer.data());
-                return true;
-            }
+            relaxPartitioner(viewer.data());
+            return true;
             break;
 
         case 'V':
         case 'v':
-            viewer.core().is_animating = false;
             showGroundTruth = !showGroundTruth;
             plotDataOnScreen(viewer.data());
             return true;
@@ -282,6 +281,9 @@ int main(int argc, char* argv[]) {
     if (!viewer.load_mesh_from_file(modelPath)) return -1;
     model = Model(viewer.data().V, viewer.data().F);
 
+    // Dijkstra partitioner.
+    initPartitioner();
+
     // Import ImGui plugin.
     igl::opengl::glfw::imgui::ImGuiPlugin plugin;
     viewer.plugins.push_back(&plugin);
@@ -292,7 +294,9 @@ int main(int argc, char* argv[]) {
     viewerSetup(viewer);
     viewer.callback_key_pressed = &keyboardInputCallback; // Do NOT mistake it with viewer.callback_key_down
     viewer.callback_pre_draw = &preDrawCallback;
-    menu.callback_draw_viewer_menu = [&]() { // I had to copy a lot of the contents of ImGuiMenu::draw_viewer_menu since I must modify some of its behaviors.
+
+    int dummySeedsCount = DEFAULT_REGIONS_NUMBER;
+    menu.callback_draw_viewer_menu = [&]() { // I had to copy a lot of ImGuiMenu::draw_viewer_menu since I must modify some of its behaviors.
         // Mesh
         if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen)) {
             float w = ImGui::GetContentRegionAvail().x;
@@ -348,8 +352,14 @@ int main(int argc, char* argv[]) {
             ImGui::PopItemWidth();
         }
 
-        // Helper for setting viewport specific mesh options
-        auto makeSimpleCheckbox = [&](const char* label, unsigned int& option) {
+        // Helpers for making checkboxes quickly.
+        auto makeCheckbox = [&](const char* label, bool& option) {
+            return ImGui::Checkbox(label,
+                [&]() { return option; },
+                [&](bool value) { return option = value; }
+            );
+        };
+        auto makeCheckboxWithOptionId = [&](const char* label, unsigned int& option) {
             return ImGui::Checkbox(label,
                 [&]() { return viewer.core().is_set(option); },
                 [&](bool value) { return viewer.core().set(option, value); }
@@ -358,8 +368,8 @@ int main(int argc, char* argv[]) {
 
         // Draw options
         if (ImGui::CollapsingHeader("Draw Options", ImGuiTreeNodeFlags_DefaultOpen)) {
-            makeSimpleCheckbox("Fill faces", viewer.data().show_faces);
-            makeSimpleCheckbox("Wireframe", viewer.data().show_lines);
+            makeCheckboxWithOptionId("Fill faces", viewer.data().show_faces);
+            makeCheckboxWithOptionId("Wireframe", viewer.data().show_lines);
             ImGui::ColorEdit4("Wireframe color", viewer.data().line_color.data(),
                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
             ImGui::ColorEdit4("Background", viewer.core().background_color.data(),
@@ -371,15 +381,25 @@ int main(int argc, char* argv[]) {
 
         // Overlays
         if (ImGui::CollapsingHeader("Overlays", ImGuiTreeNodeFlags_DefaultOpen)) {
-            makeSimpleCheckbox("Show overlays", viewer.data().show_overlay);
-            makeSimpleCheckbox("Show overlays depth", viewer.data().show_overlay_depth);
+            makeCheckboxWithOptionId("Show overlays", viewer.data().show_overlay);
+            makeCheckboxWithOptionId("Show overlays depth", viewer.data().show_overlay_depth);
         }
 
         // Graph
         if (ImGui::CollapsingHeader("Graph", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
+            if (ImGui::DragInt("Seeds count", &(dummySeedsCount), 1.0f, 1, partitioner.getNodesCount() / 2)) {
+                partitioner.setSeedsCount(dummySeedsCount);
+                runPartitioner(viewer.data());
+            }
+            ImGui::PopItemWidth();
             if (ImGui::Button("Generate Seeds", ImVec2(-1, 0))) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 generateSeeds(viewer.data());
+            }
+            if (ImGui::Button("Move Seeds Randomly", ImVec2(-1, 0))) {
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+                moveSeedsRandomly(viewer.data());
             }
             if (ImGui::Checkbox("Face-based", &(viewer.data().face_based))) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
@@ -390,10 +410,25 @@ int main(int argc, char* argv[]) {
                 switchGraphDensity(viewer.data());
             }
         }
+
+        // Partitioning
+        if (ImGui::CollapsingHeader("Partitioning", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::Button("Relax Seeds Once", ImVec2(-1, 0))) {
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+                relaxPartitioner(viewer.data());
+            }
+            makeCheckbox("Relax seeds over time", viewer.core().is_animating);
+            ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
+            ImGui::InputDouble("Relaxation rate", &(viewer.core().animation_max_fps));
+            ImGui::PopItemWidth();
+            if (ImGui::Checkbox("Show ground truth", &showGroundTruth)) {
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+                plotDataOnScreen(viewer.data());
+            }
+        }
     };
 
     // Run everything...
-    initPartitioner();
     runPartitioner(viewer.data());
     viewer.launch();
 

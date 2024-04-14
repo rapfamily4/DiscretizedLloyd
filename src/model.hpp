@@ -186,22 +186,23 @@ public:
         }
     }
 
-    void firstVerticesFromTriangles(const std::vector<int>& triangleIds, std::vector<int>& verticeIds) {
-        verticeIds.clear();
+    void firstVerticesFromTriangles(const std::vector<int>& triangleIds, std::vector<int>& vertexIds) {
+        // NB: there may be duplicate vertices in vertexIds
+        vertexIds.clear();
         for (int t : triangleIds)
-            verticeIds.push_back(F(t, 0));
-        assert(verticeIds.size() == triangleIds.size());
+            vertexIds.push_back(F(t, 0));
+        assert(vertexIds.size() == triangleIds.size());
     }
 
-    void trianglesFromVertices(const std::vector<int>& verticeIds, std::vector<int>& triangleIds) {
+    void trianglesFromVertices(const std::vector<int>& vertexIds, std::vector<int>& triangleIds) {
         triangleIds.clear();
-        for (int v : verticeIds)
+        for (int v : vertexIds)
             for (int i = 0; i < F.size(); i++)
                 if (F(i) == v) {
                     triangleIds.push_back(i % F.rows()); // F is column major.
                     break;
                 }
-        assert(verticeIds.size() == triangleIds.size());
+        assert(vertexIds.size() == triangleIds.size());
     }
 
     void verticesPositions(std::vector<glm::vec3>& positions) {

@@ -277,14 +277,46 @@ private:
 		return movedSeed;
 	}
 
+	/*
+	It makes a vector of seeds of the specifies size.
+	Random seeds will be generated from the specified inclusive index.
+	No seeds will be randomly generated if such index is out of the new vector's bounds.
+	By not generating newly added seed indices, these will be set to -1 (invalid index).
+	It returns the size of the seeds' vector actually made.
+	*/
+	int makeSeedsVector(int size, int generateRandomFrom = 0) {
+		assert(size > 0);
+		int numberOfNodes = nodes.size();
+		if (size > numberOfNodes / 2)
+			size = numberOfNodes / 2;
+
+		seeds.resize(size, -1);
+		if (generateRandomFrom >= 0 && generateRandomFrom < size) {
+			// Set as used the already chosen seeds.
+			std::vector<bool> used(numberOfNodes, false);
+			for (int i = 0; i < generateRandomFrom; i++)
+				used[seeds[i]] = true;
+
+			for (int i = generateRandomFrom; i < size; i++) {
+				int s;
+				do s = std::rand() % numberOfNodes;
+				while (used[s]);
+				used[s] = true;
+				seeds[i] = s;
+			}
+		}
+
+		return size;
+	}
+
 public:
 	DijkstraPartitioner() {}
 
-	DijkstraPartitioner(std::vector<float> nodeWeights, std::vector<std::vector<int>> neighbors, std::vector<std::vector<float>> edgeWeights, int numberOfRegions) {
+	DijkstraPartitioner(std::vector<float> nodeWeights, std::vector<std::vector<int>> neighbors, std::vector<std::vector<float>> edgeWeights, int seedsCount) {
 		assert(nodeWeights.size() == neighbors.size() && neighbors.size() == edgeWeights.size() && edgeWeights.size() == nodeWeights.size());
 		resetState();
 		generateNodes(nodeWeights, neighbors, edgeWeights);
-		generateRandomSeeds(numberOfRegions);
+		makeSeedsVector(seedsCount);
 	}
 
 	void resetState() {
@@ -302,28 +334,8 @@ public:
 		initSortedVector();
 	}
 
-	// It returns the number of seeds actually generated.
-	int generateRandomSeeds(int numberOfRegions) {
-		int numberOfNodes = nodes.size();
-
-		if (numberOfRegions > numberOfNodes / 2)
-			numberOfRegions = numberOfNodes / 2;
-
-		std::vector<bool> used(numberOfNodes, false);
-		seeds.clear();
-		for (int i = 0; i < numberOfRegions; i++) {
-			int s;
-			do s = std::rand() % numberOfNodes;
-			while (used[s]);
-			used[s] = true;
-			seeds.push_back(s);
-		}
-
-		return numberOfRegions;
-	}
-
 	int generateRandomSeeds() {
-		return generateRandomSeeds(seeds.size());
+		return makeSeedsVector(seeds.size());
 	}
 
 	void partitionNodes() {
@@ -377,12 +389,28 @@ public:
 				treeEdges.push_back(std::pair<int, int>(i, nodes[i].parentId));
 	}
 
+	int getNodesCount() const {
+		return nodes.size();
+	}
+
 	const std::vector<int>& getSeeds() const {
 		return seeds;
 	}
 
 	void setSeeds(const std::vector<int>& newSeeds) {
 		seeds = newSeeds;
+	}
+
+	int setSeedsCount(int seedsCount) {
+		assert(seedsCount > 0);
+		
+		int oldCount = seeds.size();
+		if (seedsCount == oldCount)
+			return seedsCount;
+		else if (seedsCount < oldCount)
+			return makeSeedsVector(seedsCount, -1);
+		else
+			return makeSeedsVector(seedsCount, oldCount);
 	}
 };
 
