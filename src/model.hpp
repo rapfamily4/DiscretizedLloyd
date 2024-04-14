@@ -68,46 +68,20 @@ private:
 
 public:
     Model() {}
-    Model(std::string modelPath) {
-        load(modelPath);
-    }
-
-    bool load(std::string modelPath) {
-        try {
-            std::size_t dotpos = modelPath.find_last_of('.');
-            if (dotpos != std::string::npos) {
-                std::string ext = modelPath.substr(dotpos + 1);
-                if (ext.compare("obj") == 0) igl::readOBJ(modelPath, V, F);
-                else if (ext.compare("ply") == 0) igl::readPLY(modelPath, V, F);
-            }
-            else throw modelPath;
-        }
-        catch (std::string& path) {
-            std::cout << "Invalid input file: " << path << "\n";
-            return false;
-        }
-        catch (std::exception& e) {
-            std::cout << e.what() << "\n";
-            return false;
-        }
-        return true;
+    Model(Eigen::MatrixXd vertices, Eigen::MatrixXi triangles) :
+        V{ vertices },
+        F{ triangles } {
     }
 
     void vertexSurroundingAreas(std::vector<float>& vertexAreas) {
         vertexAreas.clear();
         vertexAreas.resize(V.rows(), 0.0f);
-        std::vector<int> triangleCount(V.rows(), 0);
         for (int t = 0; t < F.rows(); t++) {
-            float area = triangleArea(t);
-            vertexAreas[F(t, 0)] += area;
-            vertexAreas[F(t, 1)] += area;
-            vertexAreas[F(t, 2)] += area;
-            triangleCount[F(t, 0)]++;
-            triangleCount[F(t, 1)]++;
-            triangleCount[F(t, 2)]++;
+            float thirdOfArea = triangleArea(t) / 3;
+            vertexAreas[F(t, 0)] += thirdOfArea;
+            vertexAreas[F(t, 1)] += thirdOfArea;
+            vertexAreas[F(t, 2)] += thirdOfArea;
         }
-        for (int v = 0; v < V.rows(); v++)
-            vertexAreas[v] /= triangleCount[v];
     }
 
     void vertexAdjacency(std::vector<std::vector<int>>& adjacency, std::vector<std::vector<float>>& distances) {

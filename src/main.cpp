@@ -137,6 +137,17 @@ void plotDataOnScreen(igl::opengl::ViewerData& data) {
     assignColorsToModel(data, regionAssignments);
 }
 
+void initPartitioner() {
+    std::vector<float> nodeWeights;
+    model.vertexSurroundingAreas(nodeWeights);
+    std::vector<std::vector<int>> adjacency;
+    std::vector<std::vector<float>> edgeWeights;
+    if (denseGraph) model.denseVertexAdjacency(adjacency, edgeWeights);
+    else model.vertexAdjacency(adjacency, edgeWeights);
+
+    partitioner = DijkstraPartitioner(nodeWeights, adjacency, edgeWeights, REGIONS_NUMBER);
+}
+
 void runPartitioner(igl::opengl::ViewerData& data) {
     partitioner.resetState();
     partitioner.partitionNodes();
@@ -200,6 +211,15 @@ void switchGraphDensity(igl::opengl::ViewerData& data) {
     runPartitioner(data);
 }
 
+void viewerSetup(igl::opengl::glfw::Viewer& viewer) {
+    viewer.data().set_face_based(false);
+    viewer.data().point_size = 8.;
+    viewer.data().show_lines = false;
+    viewer.core().is_animating = false;
+    viewer.core().animation_max_fps = 120.;
+    viewer.core().lighting_factor = 1;
+}
+
 bool keyboardInputCallback(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier) {
     switch (key) {
         case 'C':
@@ -249,16 +269,6 @@ bool preDrawCallback(igl::opengl::glfw::Viewer& viewer) {
 }
 
 int main(int argc, char* argv[]) {
-    std::string modelPath = argc > 1 ? std::string(argv[1]) : "./models/plane.obj";
-    if (!model.load(modelPath)) return -1;
-
-    std::vector<float> nodeWeights;
-    model.vertexSurroundingAreas(nodeWeights);
-    std::vector<std::vector<int>> adjacency;
-    std::vector<std::vector<float>> edgeWeights;
-    if (denseGraph) model.denseVertexAdjacency(adjacency, edgeWeights);
-    else model.vertexAdjacency(adjacency, edgeWeights);
-
     igl::opengl::glfw::Viewer viewer;
     std::cout << "DijkstraPartitioner usage:\n"
         << "  C,c     Toggle dense graph\n"
@@ -267,6 +277,11 @@ int main(int argc, char* argv[]) {
         << "  R,r     Relax seeds once\n"
         << "  V,v     Toggle ground truth\n";
 
+    // Load mesh from file.
+    std::string modelPath = argc > 1 ? std::string(argv[1]) : "./models/plane.obj";
+    if (!viewer.load_mesh_from_file(modelPath)) return -1;
+    model = Model(viewer.data().V, viewer.data().F);
+
     // Import ImGui plugin.
     igl::opengl::glfw::imgui::ImGuiPlugin plugin;
     viewer.plugins.push_back(&plugin);
@@ -274,29 +289,111 @@ int main(int argc, char* argv[]) {
     plugin.widgets.push_back(&menu);
 
     // Viewer setup.
-    viewer.data().set_mesh(model.getVerticesMatrix(), model.getFacesMatrix());
-    viewer.core().is_animating = false;
-    viewer.core().animation_max_fps = 60.;
-    viewer.core().lighting_factor = 1;
-    viewer.data().point_size = 8.;
-    viewer.data().show_lines = false;
-
-    // Callback setup.
+    viewerSetup(viewer);
     viewer.callback_key_pressed = &keyboardInputCallback; // Do NOT mistake it with viewer.callback_key_down
     viewer.callback_pre_draw = &preDrawCallback;
-    menu.callback_draw_viewer_menu = [&]() {
-        menu.draw_viewer_menu();
-        if (ImGui::CollapsingHeader("New Group", ImGuiTreeNodeFlags_DefaultOpen)) {
-            static bool boolVariable = true;
-            if (ImGui::Checkbox("bool", &boolVariable)) {
-                // do something
-                std::cout << "boolVariable: " << std::boolalpha << boolVariable << std::endl;
+    menu.callback_draw_viewer_menu = [&]() { // I had to copy a lot of the contents of ImGuiMenu::draw_viewer_menu since I must modify some of its behaviors.
+        // Mesh
+        if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen)) {
+            float w = ImGui::GetContentRegionAvail().x;
+            float p = ImGui::GetStyle().FramePadding.x;
+            if (ImGui::Button("Load##Mesh", ImVec2((w - p) / 2.f, 0))) {
+                viewer.open_dialog_load_mesh();
+                model = Model(viewer.data().V, viewer.data().F);
+                while (viewer.selected_data_index != 0)
+                    viewer.erase_mesh(0);
+                viewerSetup(viewer);
+                initPartitioner();
+                runPartitioner(viewer.data());
+            }
+            ImGui::SameLine(0, p);
+            if (ImGui::Button("Save##Mesh", ImVec2((w - p) / 2.f, 0)))
+                viewer.open_dialog_save_mesh();
+        }
+
+        // Viewing options
+        if (ImGui::CollapsingHeader("Viewing Options", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::Button("Center object", ImVec2(-1, 0)))
+                viewer.core().align_camera_center(viewer.data().V, viewer.data().F);
+            if (ImGui::Button("Snap canonical view", ImVec2(-1, 0)))
+                viewer.snap_to_canonical_quaternion();
+
+            // Zoom
+            ImGui::PushItemWidth(80 * menu.menu_scaling());
+            ImGui::DragFloat("Zoom", &(viewer.core().camera_zoom), 0.05f, 0.1f, 20.0f);
+
+            // Select rotation type
+            int rotation_type = static_cast<int>(viewer.core().rotation_type);
+            static Eigen::Quaternionf trackball_angle = Eigen::Quaternionf::Identity();
+            static bool orthographic = true;
+            if (ImGui::Combo("Camera Type", &rotation_type, "Trackball\0Two Axes\0002D Mode\0\0")) {
+                using RT = igl::opengl::ViewerCore::RotationType;
+                auto new_type = static_cast<RT>(rotation_type);
+                if (new_type != viewer.core().rotation_type) {
+                    if (new_type == RT::ROTATION_TYPE_NO_ROTATION) {
+                        trackball_angle = viewer.core().trackball_angle;
+                        orthographic = viewer.core().orthographic;
+                        viewer.core().trackball_angle = Eigen::Quaternionf::Identity();
+                        viewer.core().orthographic = true;
+                    } else if (viewer.core().rotation_type == RT::ROTATION_TYPE_NO_ROTATION) {
+                        viewer.core().trackball_angle = trackball_angle;
+                        viewer.core().orthographic = orthographic;
+                    }
+                    viewer.core().set_rotation_type(new_type);
+                }
+            }
+
+            // Orthographic view
+            ImGui::Checkbox("Orthographic view", &(viewer.core().orthographic));
+            ImGui::PopItemWidth();
+        }
+
+        // Helper for setting viewport specific mesh options
+        auto makeSimpleCheckbox = [&](const char* label, unsigned int& option) {
+            return ImGui::Checkbox(label,
+                [&]() { return viewer.core().is_set(option); },
+                [&](bool value) { return viewer.core().set(option, value); }
+            );
+        };
+
+        // Draw options
+        if (ImGui::CollapsingHeader("Draw Options", ImGuiTreeNodeFlags_DefaultOpen)) {
+            makeSimpleCheckbox("Fill faces", viewer.data().show_faces);
+            makeSimpleCheckbox("Wireframe", viewer.data().show_lines);
+            ImGui::ColorEdit4("Wireframe color", viewer.data().line_color.data(),
+                ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+            ImGui::ColorEdit4("Background", viewer.core().background_color.data(),
+                ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
+            ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
+            ImGui::DragFloat("Shininess", &(viewer.data().shininess), 0.05f, 0.0f, 100.0f);
+            ImGui::PopItemWidth();
+        }
+
+        // Overlays
+        if (ImGui::CollapsingHeader("Overlays", ImGuiTreeNodeFlags_DefaultOpen)) {
+            makeSimpleCheckbox("Show overlays", viewer.data().show_overlay);
+            makeSimpleCheckbox("Show overlays depth", viewer.data().show_overlay_depth);
+        }
+
+        // Graph
+        if (ImGui::CollapsingHeader("Graph", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::Button("Generate Seeds", ImVec2(-1, 0))) {
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+                generateSeeds(viewer.data());
+            }
+            if (ImGui::Checkbox("Face-based", &(viewer.data().face_based))) {
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+                switchGraphType(viewer.data());
+            }
+            if (ImGui::Checkbox("Dense", &denseGraph)) {
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+                switchGraphDensity(viewer.data());
             }
         }
     };
 
-    partitioner = DijkstraPartitioner(nodeWeights, adjacency, edgeWeights, REGIONS_NUMBER);
-    viewer.data().set_face_based(false);
+    // Run everything...
+    initPartitioner();
     runPartitioner(viewer.data());
     viewer.launch();
 
