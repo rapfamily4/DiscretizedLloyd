@@ -79,12 +79,13 @@ private:
 
 	void resetNodes() {
 		for (Node& n : nodes) {
+			n.inSeedConfiguration = false;
+
 			if (lockRegions && !seedChanged(n.regionId)) continue;
 
 			n.distFromSeed = +INF;
 			n.parentId = -1;
 			n.frontierIndex = -1;
-			n.inSeedConfiguration = false;
 			n.status = Unvisited;
 			if (greedyRelaxation) {
 				n.regionId = -1;
@@ -239,6 +240,11 @@ private:
 				if (lockRegions && nodes[s].regionId != nodes[e.target].regionId) continue;
 
 				float newWeight = nodes[e.target].subtreeTotalEdgesWeight * nodes[e.target].subtreeTotalNodesWeight;
+				for (Edge n : nodes[e.target].edges) {
+					if (nodes[n.target].parentId != s) continue;
+					newWeight += nodes[n.target].subtreeTotalEdgesWeight * nodes[n.target].subtreeTotalNodesWeight;
+				}
+
 				if (newWeight > maxWeight) {
 					maxWeight = newWeight;
 					candidate = e.target;
@@ -272,8 +278,13 @@ private:
 				if (nodes[e.target].wasSeed() && nodes[e.target].scoreAsSeed < minScore) {
 					minScore = nodes[e.target].scoreAsSeed;
 					minSeed = e.target;
-				} else {
+				} else if (minSeed == s) { // If a candidate's been already found with the precise heuristics, don't bother falling back to the greedy one.
 					float newWeight = nodes[e.target].subtreeTotalEdgesWeight * nodes[e.target].subtreeTotalNodesWeight;
+					for (Edge n : nodes[e.target].edges) {
+						if (nodes[n.target].parentId != s) continue;
+						newWeight += nodes[n.target].subtreeTotalEdgesWeight * nodes[n.target].subtreeTotalNodesWeight;
+					}
+					
 					if (!nodes[e.target].wasSeed() && newWeight > maxWeight) {
 						maxWeight = newWeight;
 						maxSeed = e.target;
