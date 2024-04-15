@@ -69,14 +69,16 @@ private:
 	bool relaxationOver = false;
 	std::vector<Node> nodes;
 	std::vector<int> seeds;
-	std::vector<int> prevSeeds; // The configuration of seeds at the end of the previous cycle of the precise relaxation.
+	std::vector<int> prevSeeds; // The configuration of seeds at the previous iteration of the relaxation.
+	std::vector<int> prevPreciseSeeds; // The configuration of seeds at the end of the previous cycle of the precise relaxation.
 	std::vector<int> frontier; // Implemented as a heap.
 	std::vector<int> sorted; // Indices of nodes sorted by their distance from seeds.
 
 
 	void resetNodes() {
-		frontier.clear();
 		for (Node& n : nodes) {
+			if (lockRegions && !seedChanged(n.regionId)) continue;
+
 			n.distFromSeed = +INF;
 			n.parentId = -1;
 			n.frontierIndex = -1;
@@ -96,6 +98,8 @@ private:
 
 	void initSeedNodes() {
 		for (int i = 0; i < seeds.size(); i++) {
+			if (lockRegions && !seedChanged(i)) continue;
+
 			Node& seed = nodes[seeds[i]];
 			seed.regionId = i;
 			seed.distFromSeed = 0;
@@ -218,6 +222,11 @@ private:
 		return std::find(seeds.begin(), seeds.end(), nodeId) != seeds.end();
 	}
 
+	bool seedChanged(int regionId) {
+		assert(regionId < seeds.size());
+		return regionId >= prevSeeds.size() || prevSeeds[regionId] != seeds[regionId];
+	}
+
 	bool moveSeedsGreedy() {
 		assert(!lockRegions && greedyRelaxation);
 		bool movedSeed = false;
@@ -324,6 +333,8 @@ public:
 		greedyRelaxation = true;
 		greedyFirstReset = true;
 		relaxationOver = false;
+		prevSeeds.clear();
+		prevPreciseSeeds.clear();
 	}
 
 	void generateNodes(std::vector<float> nodeWeights, std::vector<std::vector<int>> neighbors, std::vector<std::vector<float>> edgeWeights) {
@@ -339,6 +350,7 @@ public:
 	}
 
 	void partitionNodes() {
+		frontier.clear();
 		resetNodes();
 		initSeedNodes();
 
@@ -352,6 +364,8 @@ public:
 
 	void relaxSeeds() {
 		if (relaxationOver) return;
+
+		prevSeeds = seeds;
 		sortNodeIdsByDistance();
 		updateSubtreeInfo();
 		if (greedyRelaxation) {
@@ -362,7 +376,7 @@ public:
 			scoreAllSeedsPrecise();
 			lockRegions = moveSeedsPrecise();
 			if (!lockRegions) {
-				if (prevSeeds != seeds) prevSeeds = seeds;
+				if (prevPreciseSeeds != seeds) prevPreciseSeeds = seeds;
 				else relaxationOver = true;
 			}
 		}
