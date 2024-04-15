@@ -34,6 +34,7 @@ private:
 		float weight;
 		float distFromSeed;
 		float scoreAsSeed;
+		bool inSeedConfiguration; // Is this node in the current seed configuration?
 
 		std::vector<Edge> edges;
 		NodeStatus status;
@@ -50,6 +51,7 @@ private:
 			weight( weight ),
 			distFromSeed( +INF ),
 			scoreAsSeed( -1 ),
+			inSeedConfiguration( false ),
 			status( Unvisited ), 
 			subtreeTotalNodesWeight( 0.0f ),
 			subtreeTotalEdgesWeight ( 0.0f ) {
@@ -82,6 +84,7 @@ private:
 			n.distFromSeed = +INF;
 			n.parentId = -1;
 			n.frontierIndex = -1;
+			n.inSeedConfiguration = false;
 			n.status = Unvisited;
 			if (greedyRelaxation) {
 				n.regionId = -1;
@@ -98,9 +101,11 @@ private:
 
 	void initSeedNodes() {
 		for (int i = 0; i < seeds.size(); i++) {
+			Node& seed = nodes[seeds[i]];
+			seed.inSeedConfiguration = true;
+
 			if (lockRegions && !seedChanged(i)) continue;
 
-			Node& seed = nodes[seeds[i]];
 			seed.regionId = i;
 			seed.distFromSeed = 0;
 			seed.status = Visited;
@@ -218,10 +223,6 @@ private:
 				nodes[s].scoreAsSeed = scores[nodes[s].regionId];
 	}
 
-	bool isInSeedConfiguration(int nodeId) {
-		return std::find(seeds.begin(), seeds.end(), nodeId) != seeds.end();
-	}
-
 	bool seedChanged(int regionId) {
 		assert(regionId < seeds.size());
 		return regionId >= prevSeeds.size() || prevSeeds[regionId] != seeds[regionId];
@@ -234,7 +235,7 @@ private:
 			float maxWeight = -INF;
 			int candidate = s;
 			for (Edge e : nodes[s].edges) {
-				if (isInSeedConfiguration(e.target)) continue;
+				if (nodes[e.target].inSeedConfiguration) continue;
 				if (lockRegions && nodes[s].regionId != nodes[e.target].regionId) continue;
 
 				float newWeight = nodes[e.target].subtreeTotalEdgesWeight * nodes[e.target].subtreeTotalNodesWeight;
@@ -244,7 +245,9 @@ private:
 				}
 			}
 			if (candidate != s && !nodes[candidate].wasSeed()) {
+				nodes[s].inSeedConfiguration = false;
 				s = candidate;
+				nodes[s].inSeedConfiguration = true;
 				movedSeed = true;
 			}
 		}
@@ -255,12 +258,15 @@ private:
 		assert(!greedyRelaxation);
 		bool movedSeed = false;
 		for (int& s : seeds) {
+			//int seedId = static_cast<int>(&s - seeds.data());
+			//if (lockRegions && !seedChanged(seedId)) continue;
+
 			int minSeed = s;
 			int maxSeed = s;
 			float minScore = nodes[s].scoreAsSeed;
 			float maxWeight = -INF;
 			for (Edge e : nodes[s].edges) {
-				if (isInSeedConfiguration(e.target)) continue;
+				if (nodes[e.target].inSeedConfiguration) continue;
 				if (lockRegions && nodes[s].regionId != nodes[e.target].regionId) continue;
 
 				if (nodes[e.target].wasSeed() && nodes[e.target].scoreAsSeed < minScore) {
@@ -276,10 +282,14 @@ private:
 			}
 
 			if (minSeed != s) {
+				nodes[s].inSeedConfiguration = false;
 				s = minSeed;
+				nodes[s].inSeedConfiguration = true;
 				movedSeed = true;
 			} else if (maxSeed != s) {
+				nodes[s].inSeedConfiguration = false;
 				s = maxSeed;
+				nodes[s].inSeedConfiguration = true;
 				movedSeed = true;
 			}
 		}
@@ -364,8 +374,8 @@ public:
 
 	void relaxSeeds() {
 		if (relaxationOver) return;
-
 		prevSeeds = seeds;
+
 		sortNodeIdsByDistance();
 		updateSubtreeInfo();
 		if (greedyRelaxation) {

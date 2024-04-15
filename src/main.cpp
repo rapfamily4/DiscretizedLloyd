@@ -163,6 +163,7 @@ void generateSeeds(igl::opengl::ViewerData &data) {
 
 void relaxPartitioner(igl::opengl::ViewerData& data) {
     beginChrono();
+    partitioner.resetState();
     partitioner.fullRelaxation();
     endChrono("Voronoi");
     plotDataOnScreen(data);
