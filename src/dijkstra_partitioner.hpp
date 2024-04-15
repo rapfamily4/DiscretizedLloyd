@@ -382,6 +382,14 @@ public:
 		}
 	}
 
+	// change the name of this
+	void fullRelaxation() {
+		while (!relaxationOver) {
+			relaxSeeds();
+			partitionNodes();
+		}
+	}
+
 	void moveSeedsRandomly() {
 		resetState();
 		for (int& s : seeds) {

@@ -162,6 +162,13 @@ void generateSeeds(igl::opengl::ViewerData &data) {
 }
 
 void relaxPartitioner(igl::opengl::ViewerData& data) {
+    beginChrono();
+    partitioner.fullRelaxation();
+    endChrono("Voronoi");
+    plotDataOnScreen(data);
+}
+
+void relaxPartitionerOnce(igl::opengl::ViewerData& data) {
     partitioner.relaxSeeds();
     partitioner.partitionNodes();
     plotDataOnScreen(data);
@@ -248,7 +255,7 @@ bool keyboardInputCallback(igl::opengl::glfw::Viewer& viewer, unsigned char key,
 
         case 'R':
         case 'r':
-            relaxPartitioner(viewer.data());
+            relaxPartitionerOnce(viewer.data());
             return true;
             break;
 
@@ -263,7 +270,7 @@ bool keyboardInputCallback(igl::opengl::glfw::Viewer& viewer, unsigned char key,
 
 bool preDrawCallback(igl::opengl::glfw::Viewer& viewer) {
     if (viewer.core().is_animating)
-        relaxPartitioner(viewer.data());
+        relaxPartitionerOnce(viewer.data());
     return false;
 }
 
@@ -413,9 +420,13 @@ int main(int argc, char* argv[]) {
 
         // Partitioning
         if (ImGui::CollapsingHeader("Partitioning", ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (ImGui::Button("Relax Seeds Once", ImVec2(-1, 0))) {
+            if (ImGui::Button("Relax Seeds", ImVec2(-1, 0))) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 relaxPartitioner(viewer.data());
+            }
+            if (ImGui::Button("Relax Seeds Once", ImVec2(-1, 0))) {
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+                relaxPartitionerOnce(viewer.data());
             }
             makeCheckbox("Relax seeds over time", viewer.core().is_animating);
             ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
