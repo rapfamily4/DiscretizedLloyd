@@ -75,6 +75,8 @@ private:
 	std::vector<int> prevPreciseSeeds; // The configuration of seeds at the end of the previous cycle of the precise relaxation.
 	std::vector<int> frontier; // Implemented as a heap.
 	std::vector<int> sorted; // Indices of nodes sorted by their distance from seeds.
+	unsigned int greedyIterationsCount = 0;
+	unsigned int preciseIterationsCount = 0;
 
 
 	void resetNodes() {
@@ -363,6 +365,8 @@ public:
 		relaxationOver = false;
 		prevSeeds.clear();
 		prevPreciseSeeds.clear();
+		greedyIterationsCount = 0;
+		preciseIterationsCount = 0;
 	}
 
 	void generateNodes(std::vector<float> nodeWeights, std::vector<std::vector<int>> neighbors, std::vector<std::vector<float>> edgeWeights) {
@@ -399,6 +403,7 @@ public:
 		if (greedyRelaxation) {
 			scoreAllSeedsGreedy();
 			greedyRelaxation = moveSeedsGreedy();
+			greedyIterationsCount++;
 		}
 		else {
 			scoreAllSeedsPrecise();
@@ -407,6 +412,7 @@ public:
 				if (prevPreciseSeeds != seeds) prevPreciseSeeds = seeds;
 				else relaxationOver = true;
 			}
+			preciseIterationsCount++;
 		}
 	}
 
@@ -445,6 +451,14 @@ public:
 
 	const std::vector<int>& getSeeds() const {
 		return seeds;
+	}
+
+	unsigned int getGreedyIterationsCount() {
+		return greedyIterationsCount;
+	}
+
+	unsigned int getPreciseIterationsCount() {
+		return preciseIterationsCount;
 	}
 
 	void setSeeds(const std::vector<int>& newSeeds) {

@@ -165,7 +165,12 @@ void relaxPartitioner(igl::opengl::ViewerData& data) {
     beginChrono();
     partitioner.resetState();
     partitioner.fullRelaxation();
+    std::cout << "-----------\n";
     endChrono("Voronoi");
+    std::cout << "Seeds count: " << partitioner.getSeeds().size() << "\n";
+    std::cout << "Greedy " << (partitioner.useSmartGreedyRelaxation ? "(smart) " : "") << "iterations: " << partitioner.getGreedyIterationsCount() << "\n";
+    std::cout << "Precise iterations: " << partitioner.getPreciseIterationsCount() << "\n";
+    std::cout << "\n";
     plotDataOnScreen(data);
 }
 
