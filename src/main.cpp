@@ -1,4 +1,3 @@
-#include <chrono>
 #include <vector>
 #include <map>
 #include <exception>
@@ -15,6 +14,7 @@
 #include <glm/gtx/color_space.hpp>
 #include "dijkstra_partitioner.hpp"
 #include "model.hpp"
+#include "stopwatch.hpp"
 #include "consts.hpp"
 
 #define DEFAULT_REGIONS_NUMBER 16
@@ -22,20 +22,10 @@
 
 DijkstraPartitioner partitioner;
 Model model;
-std::chrono::steady_clock::time_point beginTimeStamp;
-std::chrono::steady_clock::time_point endTimeStamp;
+Stopwatch swatch;
 bool denseGraph = false;
 bool showGroundTruth = false;
 
-
-void beginChrono() {
-    beginTimeStamp = std::chrono::steady_clock::now();
-}
-
-void endChrono(const std::string taskName) {
-    endTimeStamp = std::chrono::steady_clock::now();
-    std::cout << taskName << ": " << std::chrono::duration_cast<std::chrono::milliseconds>(endTimeStamp - beginTimeStamp).count() << "ms" << "\n";
-}
 
 void groundTruth(igl::opengl::ViewerData& data, std::vector<int>& regionAssignments, Eigen::MatrixXd& barycenters) {
     assert(showGroundTruth);
@@ -162,11 +152,11 @@ void generateSeeds(igl::opengl::ViewerData &data) {
 }
 
 void relaxPartitioner(igl::opengl::ViewerData& data) {
-    beginChrono();
+    swatch.begin();
     partitioner.resetState();
     partitioner.fullRelaxation();
     std::cout << "-----------\n";
-    endChrono("Voronoi");
+    std::cout << "Voronoi: " << swatch.end() << "ms\n";
     std::cout << "Seeds count: " << partitioner.getSeeds().size() << "\n";
     std::cout << "Greedy " << (partitioner.useSmartGreedyRelaxation ? "(smart) " : "") << "iterations: " << partitioner.getGreedyIterationsCount() << "\n";
     std::cout << "Precise iterations: " << partitioner.getPreciseIterationsCount() << "\n";
