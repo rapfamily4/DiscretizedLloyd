@@ -127,7 +127,7 @@ void plotDataOnScreen(igl::opengl::ViewerData& data) {
 
     std::vector<int> regionAssignments;
     if (showGroundTruth) {
-        Eigen::MatrixXd barycenters(partitioner.getSeeds().size(), 3);
+        Eigen::MatrixXd barycenters = Eigen::MatrixXd::Zero(partitioner.getSeeds().size(), 3);
         groundTruth(data, regionAssignments, barycenters);
         data.add_points(barycenters, Eigen::RowVector3d(0, 0, 0));
     } else {
