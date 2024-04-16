@@ -361,12 +361,6 @@ int main(int argc, char* argv[]) {
         }
 
         // Helpers for making checkboxes quickly.
-        auto makeCheckbox = [&](const char* label, bool& option) {
-            return ImGui::Checkbox(label,
-                [&]() { return option; },
-                [&](bool value) { return option = value; }
-            );
-        };
         auto makeCheckboxWithOptionId = [&](const char* label, unsigned int& option) {
             return ImGui::Checkbox(label,
                 [&]() { return viewer.core().is_set(option); },
@@ -429,7 +423,8 @@ int main(int argc, char* argv[]) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 relaxPartitionerOnce(viewer.data());
             }
-            makeCheckbox("Relax seeds over time", viewer.core().is_animating);
+            ImGui::Checkbox("Relax seeds over time", &viewer.core().is_animating);
+            ImGui::Checkbox("Smart greedy relaxation", &partitioner.useSmartGreedyRelaxation);
             ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
             ImGui::InputDouble("Relaxation rate", &(viewer.core().animation_max_fps));
             ImGui::PopItemWidth();

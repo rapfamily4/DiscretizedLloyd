@@ -240,9 +240,11 @@ private:
 				if (lockRegions && nodes[s].regionId != nodes[e.target].regionId) continue;
 
 				float newCost = nodes[e.target].subtreeCost * nodes[e.target].subtreeWeight;
-				for (Edge n : nodes[e.target].edges) {
-					if (nodes[n.target].parentId != s) continue;
-					newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
+				if (useSmartGreedyRelaxation) {
+					for (Edge n : nodes[e.target].edges) {
+						if (nodes[n.target].parentId != s) continue;
+						newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
+					}
 				}
 
 				if (newCost > maxCost) {
@@ -280,9 +282,11 @@ private:
 					minSeed = e.target;
 				} else if (minSeed == s) { // If a candidate's been already found with the precise heuristics, don't bother falling back to the greedy one.
 					float newCost = nodes[e.target].subtreeCost * nodes[e.target].subtreeWeight;
-					for (Edge n : nodes[e.target].edges) {
-						if (nodes[n.target].parentId != s) continue;
-						newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
+					if (useSmartGreedyRelaxation) {
+						for (Edge n : nodes[e.target].edges) {
+							if (nodes[n.target].parentId != s) continue;
+							newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
+						}
 					}
 					
 					if (!nodes[e.target].wasSeed() && newCost > maxCost) {
@@ -340,6 +344,9 @@ private:
 	}
 
 public:
+	bool useSmartGreedyRelaxation = true;
+
+
 	DijkstraPartitioner() {}
 
 	DijkstraPartitioner(std::vector<float> nodeWeights, std::vector<std::vector<int>> neighbors, std::vector<std::vector<float>> edgeWeights, int seedsCount) {
