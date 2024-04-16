@@ -20,11 +20,11 @@ private:
 
 	struct Edge {
 		int target;
-		float weight;
+		float cost;
 
-		Edge(int target, float weight) :
+		Edge(int target, float cost) :
 			target{ target },
-			weight{ weight } {}
+			cost{ cost } {}
 	};
 
 	struct Node {
@@ -40,8 +40,8 @@ private:
 		NodeStatus status;
 
 		// Stats about the subtree rooted on this node.
-		float subtreeTotalNodesWeight;
-		float subtreeTotalEdgesWeight;
+		float subtreeWeight;
+		float subtreeCost;
 
 
 		Node(float weight, std::vector<int> neighbors, std::vector<float> edgeWeights) :
@@ -53,8 +53,8 @@ private:
 			scoreAsSeed( -1 ),
 			inSeedConfiguration( false ),
 			status( Unvisited ), 
-			subtreeTotalNodesWeight( 0.0f ),
-			subtreeTotalEdgesWeight ( 0.0f ) {
+			subtreeWeight( 0.0f ),
+			subtreeCost ( 0.0f ) {
 			assert(neighbors.size() == edgeWeights.size());
 			for (int i = 0; i < neighbors.size(); i++)
 				edges.push_back(Edge(neighbors[i], edgeWeights[i]));
@@ -171,7 +171,7 @@ private:
 		for (Edge e : n.edges) {
 			Node& m = nodes[e.target];
 			if (lockRegions && m.regionId != n.regionId) continue;
-			float elapsedDistance = n.distFromSeed + e.weight;
+			float elapsedDistance = n.distFromSeed + e.cost;
 			if (m.status == Unvisited) {
 				m.status = Visited;
 				m.distFromSeed = elapsedDistance;
@@ -195,16 +195,16 @@ private:
 
 	void updateSubtreeInfo() {
 		for (Node& n : nodes) {
-			n.subtreeTotalNodesWeight = n.weight;
-			n.subtreeTotalEdgesWeight = n.distFromSeed;
+			n.subtreeWeight = n.weight;
+			n.subtreeCost = n.distFromSeed;
 		}
 
 		for (int i = sorted.size() - 1; i >= 0; i--) {
 			int j = sorted[i];
 			int parent = nodes[j].parentId;
 			if (parent == -1) continue;
-			nodes[parent].subtreeTotalNodesWeight += nodes[j].subtreeTotalNodesWeight;
-			nodes[parent].subtreeTotalEdgesWeight += nodes[j].subtreeTotalEdgesWeight;
+			nodes[parent].subtreeWeight += nodes[j].subtreeWeight;
+			nodes[parent].subtreeCost += nodes[j].subtreeCost;
 		}
 	}
 
@@ -233,20 +233,20 @@ private:
 		assert(!lockRegions && greedyRelaxation);
 		bool movedSeed = false;
 		for (int& s : seeds) {
-			float maxWeight = -INF;
+			float maxCost = -INF;
 			int candidate = s;
 			for (Edge e : nodes[s].edges) {
 				if (nodes[e.target].inSeedConfiguration) continue;
 				if (lockRegions && nodes[s].regionId != nodes[e.target].regionId) continue;
 
-				float newWeight = nodes[e.target].subtreeTotalEdgesWeight * nodes[e.target].subtreeTotalNodesWeight;
+				float newCost = nodes[e.target].subtreeCost * nodes[e.target].subtreeWeight;
 				for (Edge n : nodes[e.target].edges) {
 					if (nodes[n.target].parentId != s) continue;
-					newWeight += nodes[n.target].subtreeTotalEdgesWeight * nodes[n.target].subtreeTotalNodesWeight;
+					newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
 				}
 
-				if (newWeight > maxWeight) {
-					maxWeight = newWeight;
+				if (newCost > maxCost) {
+					maxCost = newCost;
 					candidate = e.target;
 				}
 			}
@@ -270,7 +270,7 @@ private:
 			int minSeed = s;
 			int maxSeed = s;
 			float minScore = nodes[s].scoreAsSeed;
-			float maxWeight = -INF;
+			float maxCost = -INF;
 			for (Edge e : nodes[s].edges) {
 				if (nodes[e.target].inSeedConfiguration) continue;
 				if (lockRegions && nodes[s].regionId != nodes[e.target].regionId) continue;
@@ -279,14 +279,14 @@ private:
 					minScore = nodes[e.target].scoreAsSeed;
 					minSeed = e.target;
 				} else if (minSeed == s) { // If a candidate's been already found with the precise heuristics, don't bother falling back to the greedy one.
-					float newWeight = nodes[e.target].subtreeTotalEdgesWeight * nodes[e.target].subtreeTotalNodesWeight;
+					float newCost = nodes[e.target].subtreeCost * nodes[e.target].subtreeWeight;
 					for (Edge n : nodes[e.target].edges) {
 						if (nodes[n.target].parentId != s) continue;
-						newWeight += nodes[n.target].subtreeTotalEdgesWeight * nodes[n.target].subtreeTotalNodesWeight;
+						newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
 					}
 					
-					if (!nodes[e.target].wasSeed() && newWeight > maxWeight) {
-						maxWeight = newWeight;
+					if (!nodes[e.target].wasSeed() && newCost > maxCost) {
+						maxCost = newCost;
 						maxSeed = e.target;
 					}
 				}
