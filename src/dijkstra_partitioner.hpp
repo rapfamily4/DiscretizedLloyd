@@ -77,6 +77,7 @@ private:
 	std::vector<int> prevPreciseSeeds; // The configuration of seeds at the end of the previous cycle of the precise relaxation.
 	std::vector<int> frontier; // Implemented as a heap.
 	std::vector<int> sorted; // Indices of nodes sorted by their distance from seeds.
+
 	PerformanceStatistics dijkstraPerformance;
 	PerformanceStatistics greedyPerformance;
 	PerformanceStatistics precisePerformance;
@@ -87,7 +88,7 @@ private:
 		for (Node& n : nodes) {
 			n.inSeedConfiguration = false;
 
-			if (lockRegions && !seedChanged(n.regionId)) continue;
+			if (!greedyRelaxation && lockRegions && !seedChanged(n.regionId)) continue;
 
 			n.distFromSeed = +INF;
 			n.parentId = -1;
@@ -111,7 +112,7 @@ private:
 			Node& seed = nodes[seeds[i]];
 			seed.inSeedConfiguration = true;
 
-			if (lockRegions && !seedChanged(i)) continue;
+			if (!greedyRelaxation && lockRegions && !seedChanged(i)) continue;
 
 			seed.regionId = i;
 			seed.distFromSeed = 0;
