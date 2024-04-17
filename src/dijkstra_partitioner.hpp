@@ -77,7 +77,8 @@ private:
 	std::vector<int> prevPreciseSeeds; // The configuration of seeds at the end of the previous cycle of the precise relaxation.
 	std::vector<int> frontier; // Implemented as a heap.
 	std::vector<int> sorted; // Indices of nodes sorted by their distance from seeds.
-
+	std::vector<float> startingScores; // The scores at the beginning of the current cycle of the precise relaxation.
+	std::vector<float> prevStartingScores; // The scores at the beginning of the previous cycle of the precise relaxation.
 	PerformanceStatistics dijkstraPerformance;
 	PerformanceStatistics greedyPerformance;
 	PerformanceStatistics precisePerformance;
@@ -88,7 +89,7 @@ private:
 		for (Node& n : nodes) {
 			n.inSeedConfiguration = false;
 
-			if (!greedyRelaxation && lockRegions && !seedChanged(n.regionId)) continue;
+			if (useSmartDijkstra && !greedyRelaxation && lockRegions && !seedChanged(n.regionId)) continue;
 
 			n.distFromSeed = +INF;
 			n.parentId = -1;
@@ -112,7 +113,7 @@ private:
 			Node& seed = nodes[seeds[i]];
 			seed.inSeedConfiguration = true;
 
-			if (!greedyRelaxation && lockRegions && !seedChanged(i)) continue;
+			if (useSmartDijkstra && !greedyRelaxation && lockRegions && !seedChanged(i)) continue;
 
 			seed.regionId = i;
 			seed.distFromSeed = 0;
@@ -223,17 +224,31 @@ private:
 
 	void scoreAllSeedsPrecise() {
 		assert(!greedyRelaxation);
+
+		if (!lockRegions)
+			prevStartingScores = startingScores;
+
 		std::vector<float> scores = std::vector<float>(seeds.size(), 0.0f);
 		for (Node n : nodes)
 			scores[n.regionId] += n.distFromSeed * n.distFromSeed * n.weight;
 		for (int s : seeds)
 			if (!nodes[s].wasSeed())
 				nodes[s].scoreAsSeed = scores[nodes[s].regionId];
+
+		if (!lockRegions)
+			// Keep in mind that when regions are unlocked, every node hasn't been a seed before
+			// (nodes[s].wasSeed() always returns false).
+			startingScores = scores;
 	}
 
 	bool seedChanged(int regionId) {
 		assert(regionId < seeds.size());
 		return regionId >= prevSeeds.size() || prevSeeds[regionId] != seeds[regionId];
+	}
+
+	bool startingScoreChanged(int regionId) {
+		assert(regionId < seeds.size());
+		return regionId >= prevStartingScores.size() || prevStartingScores[regionId] != startingScores[regionId];
 	}
 
 	bool moveSeedsGreedy() {
@@ -273,8 +288,8 @@ private:
 		assert(!greedyRelaxation);
 		bool movedSeed = false;
 		for (int& s : seeds) {
-			//int seedId = static_cast<int>(&s - seeds.data());
-			//if (lockRegions && !seedChanged(seedId)) continue;
+			int seedId = static_cast<int>(&s - seeds.data());
+			if (useSmartPreciseRelaxation && !startingScoreChanged(seedId)) continue;
 
 			int minSeed = s;
 			int maxSeed = s;
@@ -351,7 +366,9 @@ private:
 	}
 
 public:
+	bool useSmartDijkstra = true;
 	bool useSmartGreedyRelaxation = true;
+	bool useSmartPreciseRelaxation = true;
 
 
 	DijkstraPartitioner() {}
@@ -370,6 +387,7 @@ public:
 		relaxationOver = false;
 		prevSeeds.clear();
 		prevPreciseSeeds.clear();
+		prevStartingScores.clear();
 		dijkstraPerformance.reset();
 		greedyPerformance.reset();
 		precisePerformance.reset();

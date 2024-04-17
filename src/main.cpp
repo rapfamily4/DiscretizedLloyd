@@ -157,21 +157,21 @@ void relaxPartitioner(igl::opengl::ViewerData& data) {
     partitioner.resetState();
     partitioner.fullRelaxation();
     std::cout << "-----------\n";
-    std::cout << "Voronoi: " << swatch.end() << "ms\n";
+    std::cout << "Voronoi (" << (denseGraph ? "dense " : "") << (data.face_based ? "triangle" : "vertex") << "-based): " << swatch.end() << "ms\n";
     std::cout << "Seeds count: " << partitioner.getSeeds().size() << "\n";
     const PerformanceStatistics& dPerf = partitioner.getDijkstraPerformance();
     const PerformanceStatistics& gPerf = partitioner.getGreedyPerformance();
     const PerformanceStatistics& pPerf = partitioner.getPrecisePerformance();
     auto printStats = [&](const char* header, const PerformanceStatistics& perf) {
         std::cout << header
-                  << "iterations: " << perf.getIterations()
+                  << " iterations: " << perf.getIterations()
                   << ", min: " << perf.getMinTime() << "ms"
                   << ", max: " << perf.getMaxTime() << "ms"
                   << ", avg: " << perf.getAvgTime() << "ms\n";
     };
-    printStats(denseGraph ? "Dijkstra (dense):\t" : "Dijkstra:\t", dPerf);
+    printStats(partitioner.useSmartDijkstra ? "Dijkstra (smart):" : "Dijkstra:\t", dPerf);
     printStats(partitioner.useSmartGreedyRelaxation ? "Greedy (smart):\t" : "Greedy:\t\t", gPerf);
-    printStats("Precise:\t", pPerf);
+    printStats(partitioner.useSmartPreciseRelaxation ? "Precise (smart):" : "Precise:\t", pPerf);
     std::cout << "\n";
     plotDataOnScreen(data);
 }
@@ -431,7 +431,9 @@ int main(int argc, char* argv[]) {
                 relaxPartitionerOnce(viewer.data());
             }
             ImGui::Checkbox("Relax seeds over time", &viewer.core().is_animating);
+            ImGui::Checkbox("Smart Dijkstra", &partitioner.useSmartDijkstra);
             ImGui::Checkbox("Smart greedy relaxation", &partitioner.useSmartGreedyRelaxation);
+            ImGui::Checkbox("Smart precise relaxation", &partitioner.useSmartPreciseRelaxation);
             ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
             ImGui::InputDouble("Relaxation rate", &(viewer.core().animation_max_fps));
             ImGui::PopItemWidth();
