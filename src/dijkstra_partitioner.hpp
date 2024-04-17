@@ -77,6 +77,7 @@ private:
 	std::vector<int> prevPreciseSeeds; // The configuration of seeds at the end of the previous cycle of the precise relaxation.
 	std::vector<int> frontier; // Implemented as a heap.
 	std::vector<int> sorted; // Indices of nodes sorted by their distance from seeds.
+	PerformanceStatistics dijkstraPerformance;
 	PerformanceStatistics greedyPerformance;
 	PerformanceStatistics precisePerformance;
 	Stopwatch swatch;
@@ -368,6 +369,7 @@ public:
 		relaxationOver = false;
 		prevSeeds.clear();
 		prevPreciseSeeds.clear();
+		dijkstraPerformance.reset();
 		greedyPerformance.reset();
 		precisePerformance.reset();
 	}
@@ -385,6 +387,7 @@ public:
 	}
 
 	void partitionNodes() {
+		swatch.begin();
 		frontier.clear();
 		resetNodes();
 		initSeedNodes();
@@ -395,6 +398,7 @@ public:
 		}
 
 		assert(frontier.empty());
+		dijkstraPerformance.recordIteration(swatch.end());
 	}
 
 	void relaxSeeds() {
@@ -450,25 +454,17 @@ public:
 				treeEdges.push_back(std::pair<int, int>(i, nodes[i].parentId));
 	}
 
-	int getNodesCount() const {
-		return nodes.size();
-	}
+	int getNodesCount() const { return nodes.size(); }
 
-	const std::vector<int>& getSeeds() const {
-		return seeds;
-	}
+	const std::vector<int>& getSeeds() const { return seeds; }
 
-	const PerformanceStatistics& getGreedyPerformance() const {
-		return greedyPerformance;
-	}
+	const PerformanceStatistics& getDijkstraPerformance() const { return dijkstraPerformance; }
 
-	const PerformanceStatistics& getPrecisePerformance() const {
-		return precisePerformance;
-	}
+	const PerformanceStatistics& getGreedyPerformance() const { return greedyPerformance; }
 
-	void setSeeds(const std::vector<int>& newSeeds) {
-		seeds = newSeeds;
-	}
+	const PerformanceStatistics& getPrecisePerformance() const { return precisePerformance; }
+
+	void setSeeds(const std::vector<int>& newSeeds) { seeds = newSeeds; }
 
 	int setSeedsCount(int seedsCount) {
 		assert(seedsCount > 0);

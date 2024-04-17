@@ -159,18 +159,19 @@ void relaxPartitioner(igl::opengl::ViewerData& data) {
     std::cout << "-----------\n";
     std::cout << "Voronoi: " << swatch.end() << "ms\n";
     std::cout << "Seeds count: " << partitioner.getSeeds().size() << "\n";
+    const PerformanceStatistics& dPerf = partitioner.getDijkstraPerformance();
     const PerformanceStatistics& gPerf = partitioner.getGreedyPerformance();
     const PerformanceStatistics& pPerf = partitioner.getPrecisePerformance();
-    std::cout << "Greedy" << (partitioner.useSmartGreedyRelaxation ? " (smart):\t" : ":\t\t")
-              << "iterations: " << gPerf.getIterations()
-              << ", min: " << gPerf.getMinTime() << "ms"
-              << ", max: " << gPerf.getMaxTime() << "ms"
-              << ", avg: " << gPerf.getAvgTime() << "ms\n";
-    std::cout << "Precise:\t"
-              << "iterations: " << pPerf.getIterations()
-              << ", min: " << pPerf.getMinTime() << "ms"
-              << ", max: " << pPerf.getMaxTime() << "ms"
-              << ", avg: " << pPerf.getAvgTime() << "ms\n";
+    auto printStats = [&](const char* header, const PerformanceStatistics& perf) {
+        std::cout << header
+                  << "iterations: " << perf.getIterations()
+                  << ", min: " << perf.getMinTime() << "ms"
+                  << ", max: " << perf.getMaxTime() << "ms"
+                  << ", avg: " << perf.getAvgTime() << "ms\n";
+    };
+    printStats(denseGraph ? "Dijkstra (dense):\t" : "Dijkstra:\t", dPerf);
+    printStats(partitioner.useSmartGreedyRelaxation ? "Greedy (smart):\t" : "Greedy:\t\t", gPerf);
+    printStats("Precise:\t", pPerf);
     std::cout << "\n";
     plotDataOnScreen(data);
 }
