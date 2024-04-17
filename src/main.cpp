@@ -398,7 +398,7 @@ int main(int argc, char* argv[]) {
         if (ImGui::CollapsingHeader("Graph", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
             if (ImGui::DragInt("Seeds count", &(dummySeedsCount), 1.0f, 1, partitioner.getNodesCount() / 2)) {
-                partitioner.setSeedsCount(dummySeedsCount);
+                dummySeedsCount = partitioner.setSeedsCount(dummySeedsCount);
                 runPartitioner(viewer.data());
             }
             ImGui::PopItemWidth();

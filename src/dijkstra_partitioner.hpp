@@ -285,7 +285,7 @@ private:
 	}
 
 	bool moveSeedsPrecise() {
-		assert(!greedyRelaxation);
+		assert(!greedyRelaxation && lockRegions);
 		bool movedSeed = false;
 		for (int& s : seeds) {
 			int seedId = static_cast<int>(&s - seeds.data());
@@ -297,7 +297,7 @@ private:
 			float maxCost = -INF;
 			for (Edge e : nodes[s].edges) {
 				if (nodes[e.target].inSeedConfiguration) continue;
-				if (lockRegions && nodes[s].regionId != nodes[e.target].regionId) continue;
+				if (nodes[s].regionId != nodes[e.target].regionId) continue;
 
 				if (nodes[e.target].wasSeed() && nodes[e.target].scoreAsSeed < minScore) {
 					minScore = nodes[e.target].scoreAsSeed;
@@ -435,6 +435,7 @@ public:
 		else {
 			swatch.begin();
 			scoreAllSeedsPrecise();
+			lockRegions = true; // ALWAYS lock regions before moving seeds
 			lockRegions = moveSeedsPrecise();
 			if (!lockRegions) {
 				if (prevPreciseSeeds != seeds) prevPreciseSeeds = seeds;
