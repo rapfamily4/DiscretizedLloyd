@@ -17,7 +17,7 @@ public:
 
 	double end() {
 		endTimeStamp = std::chrono::steady_clock::now();
-		return std::chrono::duration_cast<std::chrono::milliseconds>(endTimeStamp - beginTimeStamp).count();
+		return std::chrono::duration<double, std::milli>(endTimeStamp - beginTimeStamp).count();
 	}
 };
 

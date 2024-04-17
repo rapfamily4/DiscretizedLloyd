@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <vector>
 #include <utility>
+#include "stopwatch.hpp"
+#include "performance_stats.hpp"
 #include "consts.hpp"
 
 class DijkstraPartitioner {
@@ -75,8 +77,9 @@ private:
 	std::vector<int> prevPreciseSeeds; // The configuration of seeds at the end of the previous cycle of the precise relaxation.
 	std::vector<int> frontier; // Implemented as a heap.
 	std::vector<int> sorted; // Indices of nodes sorted by their distance from seeds.
-	unsigned int greedyIterationsCount = 0;
-	unsigned int preciseIterationsCount = 0;
+	PerformanceStatistics greedyPerformance;
+	PerformanceStatistics precisePerformance;
+	Stopwatch swatch;
 
 
 	void resetNodes() {
@@ -365,8 +368,8 @@ public:
 		relaxationOver = false;
 		prevSeeds.clear();
 		prevPreciseSeeds.clear();
-		greedyIterationsCount = 0;
-		preciseIterationsCount = 0;
+		greedyPerformance.reset();
+		precisePerformance.reset();
 	}
 
 	void generateNodes(std::vector<float> nodeWeights, std::vector<std::vector<int>> neighbors, std::vector<std::vector<float>> edgeWeights) {
@@ -401,18 +404,20 @@ public:
 		sortNodeIdsByDistance();
 		updateSubtreeInfo();
 		if (greedyRelaxation) {
+			swatch.begin();
 			scoreAllSeedsGreedy();
 			greedyRelaxation = moveSeedsGreedy();
-			greedyIterationsCount++;
+			greedyPerformance.recordIteration(swatch.end());
 		}
 		else {
+			swatch.begin();
 			scoreAllSeedsPrecise();
 			lockRegions = moveSeedsPrecise();
 			if (!lockRegions) {
 				if (prevPreciseSeeds != seeds) prevPreciseSeeds = seeds;
 				else relaxationOver = true;
 			}
-			preciseIterationsCount++;
+			precisePerformance.recordIteration(swatch.end());
 		}
 	}
 
@@ -453,12 +458,12 @@ public:
 		return seeds;
 	}
 
-	unsigned int getGreedyIterationsCount() {
-		return greedyIterationsCount;
+	const PerformanceStatistics& getGreedyPerformance() const {
+		return greedyPerformance;
 	}
 
-	unsigned int getPreciseIterationsCount() {
-		return preciseIterationsCount;
+	const PerformanceStatistics& getPrecisePerformance() const {
+		return precisePerformance;
 	}
 
 	void setSeeds(const std::vector<int>& newSeeds) {

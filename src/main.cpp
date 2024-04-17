@@ -15,6 +15,7 @@
 #include "dijkstra_partitioner.hpp"
 #include "model.hpp"
 #include "stopwatch.hpp"
+#include "performance_stats.hpp"
 #include "consts.hpp"
 
 #define DEFAULT_REGIONS_NUMBER 16
@@ -158,8 +159,18 @@ void relaxPartitioner(igl::opengl::ViewerData& data) {
     std::cout << "-----------\n";
     std::cout << "Voronoi: " << swatch.end() << "ms\n";
     std::cout << "Seeds count: " << partitioner.getSeeds().size() << "\n";
-    std::cout << "Greedy " << (partitioner.useSmartGreedyRelaxation ? "(smart) " : "") << "iterations: " << partitioner.getGreedyIterationsCount() << "\n";
-    std::cout << "Precise iterations: " << partitioner.getPreciseIterationsCount() << "\n";
+    const PerformanceStatistics& gPerf = partitioner.getGreedyPerformance();
+    const PerformanceStatistics& pPerf = partitioner.getPrecisePerformance();
+    std::cout << "Greedy" << (partitioner.useSmartGreedyRelaxation ? " (smart):\t" : ":\t\t")
+              << "iterations: " << gPerf.getIterations()
+              << ", min: " << gPerf.getMinTime() << "ms"
+              << ", max: " << gPerf.getMaxTime() << "ms"
+              << ", avg: " << gPerf.getAvgTime() << "ms\n";
+    std::cout << "Precise:\t"
+              << "iterations: " << pPerf.getIterations()
+              << ", min: " << pPerf.getMinTime() << "ms"
+              << ", max: " << pPerf.getMaxTime() << "ms"
+              << ", avg: " << pPerf.getAvgTime() << "ms\n";
     std::cout << "\n";
     plotDataOnScreen(data);
 }
