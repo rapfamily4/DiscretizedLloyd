@@ -43,11 +43,11 @@ void printPerformanceTestResults(igl::opengl::ViewerData& data, double runningTi
             << ", avg: " << perf.getAvgTime() << "ms\n";
     };
     
-    printStats(partitioner.optimizeDijkstra ? "Dijkstra (opt):\t" : "Dijkstra:\t", dPerf);
     if (partitioner.greedyRelaxationType != DijkstraPartitioner::GreedyOption::DISABLED) {
         printStats(partitioner.greedyRelaxationType == DijkstraPartitioner::GreedyOption::OPTIMIZED ? "Greedy (opt):\t" : "Greedy:\t\t", gPerf);
     } else std::cout << "Greedy:\t\tDISABLED\n";
     printStats(partitioner.optimizePreciseRelaxation ? "Precise (opt):\t" : "Precise:\t", pPerf);
+    printStats(partitioner.optimizeDijkstra ? "Dijkstra (opt):\t" : "Dijkstra:\t", dPerf);
     std::cout << "\n";
 }
 
@@ -195,12 +195,14 @@ void relaxPartitionerOnce(igl::opengl::ViewerData& data) {
     plotDataOnScreen(data);
 }
 
-// Maybe you can merge switchGraphType and switchGraphDensity into a single function...
-void switchGraphType(igl::opengl::ViewerData& data) {
+void setGraphType(igl::opengl::ViewerData& data, bool toFaceBased) {
+    if ((toFaceBased && data.face_based) || (!toFaceBased && !data.face_based)) return;
+
     std::vector<int> newSeeds;
     std::vector<float> nodeWeights;
     std::vector<std::vector<int>> adjacency;
     std::vector<std::vector<float>> edgeWeights;
+    data.set_face_based(toFaceBased);
     if (data.face_based) {
         model.trianglesFromVertices(partitioner.getSeeds(), newSeeds);
         model.triangleAreas(nodeWeights);
@@ -217,11 +219,13 @@ void switchGraphType(igl::opengl::ViewerData& data) {
     runPartitioner(data);
 }
 
-// Maybe you can merge switchGraphType and switchGraphDensity into a single function...
-void switchGraphDensity(igl::opengl::ViewerData& data) {
+void setGraphDensity(igl::opengl::ViewerData& data, bool toDense) {
+    if ((toDense && denseGraph) || (!toDense && !denseGraph)) return;
+
     std::vector<float> nodeWeights;
     std::vector<std::vector<int>> adjacency;
     std::vector<std::vector<float>> edgeWeights;
+    denseGraph = toDense;
     if (data.face_based) {
         model.triangleAreas(nodeWeights);
         if (denseGraph) model.denseTriangleAdjacency(adjacency, edgeWeights);
@@ -245,23 +249,10 @@ void runPerformanceTest(igl::opengl::ViewerData& data) {
     bool dijkstraAtStart = partitioner.optimizeDijkstra;
 
     // Do all tests.
-    auto switchToFace = [&](bool toFaceBased) {
-        if ((!toFaceBased && data.face_based) || (toFaceBased && !data.face_based)) {
-            data.set_face_based(!data.face_based);
-            switchGraphType(data);
-        }
-    };
-    auto switchToDense = [&](bool toDense) {
-        if ((!toDense && denseGraph) || (toDense && !denseGraph)) {
-            denseGraph = !denseGraph;
-            switchGraphDensity(data);
-        }
-    };
-
     for (int face = 0; face < 2; face++) {
-        switchToFace((bool)face);
+        setGraphType(data, (bool)face);
         for (int dense = 0; dense < 2; dense++) {
-            switchToDense((bool)dense);
+            setGraphDensity(data, (bool)dense);
             for (int greedy = 0; greedy < 3; greedy++)
                 for (int precise = 0; precise < 2; precise++)
                     for (int dijkstra = 0; dijkstra < 2; dijkstra++) {
@@ -276,8 +267,8 @@ void runPerformanceTest(igl::opengl::ViewerData& data) {
     plotDataOnScreen(data);
 
     // Restore previous parameters.
-    switchToFace((bool)faceAtStart);
-    switchToDense((bool)denseAtStart);
+    setGraphType(data, (bool)faceAtStart);
+    setGraphDensity(data, (bool)denseAtStart);
     partitioner.greedyRelaxationType = greedyAtStart;
     partitioner.optimizePreciseRelaxation = preciseAtStart;
     partitioner.optimizeDijkstra = dijkstraAtStart;
@@ -296,14 +287,12 @@ bool keyboardInputCallback(igl::opengl::glfw::Viewer& viewer, unsigned char key,
     switch (key) {
         case 'C':
         case 'c':
-            denseGraph = !denseGraph;
-            switchGraphDensity(viewer.data());
+            setGraphDensity(viewer.data(), !denseGraph);
             return true;
 
         case 'F':
         case 'f':
-            viewer.data().set_face_based(!viewer.data().face_based);
-            switchGraphType(viewer.data());
+            setGraphType(viewer.data(), !viewer.data().face_based);
             return true;
 
         case 'G':
@@ -435,6 +424,16 @@ int main(int argc, char* argv[]) {
                 [&](bool value) { return viewer.core().set(option, value); }
             );
         };
+        typedef void (*graphTypeSetter)(igl::opengl::ViewerData&, bool);
+        auto makeCheckboxGraphType = [&](const char* label, bool& option, graphTypeSetter setter) {
+            return ImGui::Checkbox(label,
+                [&]() { return option; },
+                [&](bool value) {
+                    viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+                    return setter(viewer.data(), value);
+                }
+            );
+        };
 
         // Draw options
         if (ImGui::CollapsingHeader("Draw Options", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -471,14 +470,8 @@ int main(int argc, char* argv[]) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 moveSeedsRandomly(viewer.data());
             }
-            if (ImGui::Checkbox("Face-based", &(viewer.data().face_based))) {
-                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
-                switchGraphType(viewer.data());
-            }
-            if (ImGui::Checkbox("Dense", &denseGraph)) {
-                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
-                switchGraphDensity(viewer.data());
-            }
+            makeCheckboxGraphType("Face-based", viewer.data().face_based, &setGraphType);
+            makeCheckboxGraphType("Dense", denseGraph, &setGraphDensity);
         }
 
         // Partitioning
