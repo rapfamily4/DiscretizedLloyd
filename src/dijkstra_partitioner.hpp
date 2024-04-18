@@ -73,6 +73,7 @@ private:
 	bool relaxationOver = false;
 	std::vector<Node> nodes;
 	std::vector<int> seeds;
+	std::vector<int> seedsAtStart; // The configuration of seeds at the moment it was generated.
 	std::vector<int> prevSeeds; // The configuration of seeds at the previous iteration of the relaxation.
 	std::vector<int> prevPreciseSeeds; // The configuration of seeds at the end of the previous cycle of the precise relaxation.
 	std::vector<int> frontier; // Implemented as a heap.
@@ -361,6 +362,7 @@ private:
 				seeds[i] = s;
 			}
 		}
+		seedsAtStart = seeds;
 
 		return size;
 	}
@@ -466,6 +468,8 @@ public:
 			s = nodes[s].edges[random].target;
 		}
 	}
+
+	void restoreSeeds() { seeds = seedsAtStart; }
 
 	void nodewiseRegionAssignments(std::vector<int>& assignments) const {
 		assert(assignments.size() == 0);

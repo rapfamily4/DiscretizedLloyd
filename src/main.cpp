@@ -241,7 +241,7 @@ void setGraphDensity(igl::opengl::ViewerData& data, bool toDense) {
 
 void runPerformanceTest(igl::opengl::ViewerData& data) {
     // Save parameters before the test.
-    std::vector<int> seedsAtStart = partitioner.getSeeds();
+    partitioner.restoreSeeds();
     bool faceAtStart = data.face_based;
     bool denseAtStart = denseGraph;
     DijkstraPartitioner::GreedyOption greedyAtStart = partitioner.greedyRelaxationType;
@@ -249,6 +249,7 @@ void runPerformanceTest(igl::opengl::ViewerData& data) {
     bool dijkstraAtStart = partitioner.optimizeDijkstra;
 
     // Do all tests.
+    // Forgive me, Father.
     for (int face = 0; face < 2; face++) {
         setGraphType(data, (bool)face);
         for (int dense = 0; dense < 2; dense++) {
@@ -256,7 +257,7 @@ void runPerformanceTest(igl::opengl::ViewerData& data) {
             for (int greedy = 0; greedy < 3; greedy++)
                 for (int precise = 0; precise < 2; precise++)
                     for (int dijkstra = 0; dijkstra < 2; dijkstra++) {
-                        partitioner.setSeeds(seedsAtStart);
+                        partitioner.restoreSeeds();
                         partitioner.greedyRelaxationType = (DijkstraPartitioner::GreedyOption)greedy;
                         partitioner.optimizePreciseRelaxation = (bool)precise;
                         partitioner.optimizeDijkstra = (bool)dijkstra;
@@ -465,6 +466,11 @@ int main(int argc, char* argv[]) {
             if (ImGui::Button("Generate Seeds", ImVec2(-1, 0))) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 generateSeeds(viewer.data());
+            }
+            if (ImGui::Button("Restore Seeds", ImVec2(-1, 0))) {
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+                partitioner.restoreSeeds();
+                runPartitioner(viewer.data());
             }
             if (ImGui::Button("Move Seeds Randomly", ImVec2(-1, 0))) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
