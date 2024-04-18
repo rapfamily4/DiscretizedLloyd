@@ -41,9 +41,12 @@ void printPerformanceTestResults(igl::opengl::ViewerData& data, double runningTi
             << ", min: " << perf.getMinTime() << "ms"
             << ", max: " << perf.getMaxTime() << "ms"
             << ", avg: " << perf.getAvgTime() << "ms\n";
-        };
+    };
+    
     printStats(partitioner.optimizeDijkstra ? "Dijkstra (opt):\t" : "Dijkstra:\t", dPerf);
-    printStats(partitioner.greedyRelaxationType == DijkstraPartitioner::GreedyOption::OPTIMIZED ? "Greedy (opt):\t" : "Greedy:\t\t", gPerf);
+    if (partitioner.greedyRelaxationType != DijkstraPartitioner::GreedyOption::DISABLED) {
+        printStats(partitioner.greedyRelaxationType == DijkstraPartitioner::GreedyOption::OPTIMIZED ? "Greedy (opt):\t" : "Greedy:\t\t", gPerf);
+    } else std::cout << "Greedy:\t\tDISABLED\n";
     printStats(partitioner.optimizePreciseRelaxation ? "Precise (opt):\t" : "Precise:\t", pPerf);
     std::cout << "\n";
 }
@@ -172,22 +175,22 @@ void generateSeeds(igl::opengl::ViewerData &data) {
     runPartitioner(data);
 }
 
-void relaxPartitioner(igl::opengl::ViewerData& data) {
-    swatch.begin();
-    partitioner.resetState();
-    partitioner.fullRelaxation();
-    printPerformanceTestResults(data, swatch.end());
-    plotDataOnScreen(data);
-}
-
-void relaxPartitionerOnce(igl::opengl::ViewerData& data) {
-    partitioner.relaxSeeds();
+void moveSeedsRandomly(igl::opengl::ViewerData& data) {
+    partitioner.moveSeedsRandomly();
     partitioner.partitionNodes();
     plotDataOnScreen(data);
 }
 
-void moveSeedsRandomly(igl::opengl::ViewerData& data) {
-    partitioner.moveSeedsRandomly();
+void relaxPartitioner(igl::opengl::ViewerData& data, bool plotData = true) {
+    swatch.begin();
+    partitioner.resetState();
+    partitioner.fullRelaxation();
+    printPerformanceTestResults(data, swatch.end());
+    if (plotData) plotDataOnScreen(data);
+}
+
+void relaxPartitionerOnce(igl::opengl::ViewerData& data) {
+    partitioner.relaxSeeds();
     partitioner.partitionNodes();
     plotDataOnScreen(data);
 }
@@ -230,6 +233,54 @@ void switchGraphDensity(igl::opengl::ViewerData& data) {
     }
     partitioner.generateNodes(nodeWeights, adjacency, edgeWeights);
     runPartitioner(data);
+}
+
+void runPerformanceTest(igl::opengl::ViewerData& data) {
+    // Save parameters before the test.
+    std::vector<int> seedsAtStart = partitioner.getSeeds();
+    bool faceAtStart = data.face_based;
+    bool denseAtStart = denseGraph;
+    DijkstraPartitioner::GreedyOption greedyAtStart = partitioner.greedyRelaxationType;
+    bool preciseAtStart = partitioner.optimizePreciseRelaxation;
+    bool dijkstraAtStart = partitioner.optimizeDijkstra;
+
+    // Do all tests.
+    auto switchToFace = [&](bool toFaceBased) {
+        if ((!toFaceBased && data.face_based) || (toFaceBased && !data.face_based)) {
+            data.set_face_based(!data.face_based);
+            switchGraphType(data);
+        }
+    };
+    auto switchToDense = [&](bool toDense) {
+        if ((!toDense && denseGraph) || (toDense && !denseGraph)) {
+            denseGraph = !denseGraph;
+            switchGraphDensity(data);
+        }
+    };
+
+    for (int face = 0; face < 2; face++) {
+        switchToFace((bool)face);
+        for (int dense = 0; dense < 2; dense++) {
+            switchToDense((bool)dense);
+            for (int greedy = 0; greedy < 3; greedy++)
+                for (int precise = 0; precise < 2; precise++)
+                    for (int dijkstra = 0; dijkstra < 2; dijkstra++) {
+                        partitioner.setSeeds(seedsAtStart);
+                        partitioner.greedyRelaxationType = (DijkstraPartitioner::GreedyOption)greedy;
+                        partitioner.optimizePreciseRelaxation = (bool)precise;
+                        partitioner.optimizeDijkstra = (bool)dijkstra;
+                        relaxPartitioner(data, false);
+                    }
+        }
+    }
+    plotDataOnScreen(data);
+
+    // Restore previous parameters.
+    switchToFace((bool)faceAtStart);
+    switchToDense((bool)denseAtStart);
+    partitioner.greedyRelaxationType = greedyAtStart;
+    partitioner.optimizePreciseRelaxation = preciseAtStart;
+    partitioner.optimizeDijkstra = dijkstraAtStart;
 }
 
 void viewerSetup(igl::opengl::glfw::Viewer& viewer) {
@@ -314,13 +365,13 @@ int main(int argc, char* argv[]) {
     viewer.callback_key_pressed = &keyboardInputCallback; // Do NOT mistake it with viewer.callback_key_down
     viewer.callback_pre_draw = &preDrawCallback;
 
-    int dummySeedsCount = DEFAULT_REGIONS_NUMBER;
     menu.callback_draw_viewer_window = [&]() {
         //ImGui::SetNextWindowSizeConstraints(ImVec2(192, -1), ImVec2(-1, -1));
         ImGui::GetStyle().WindowMinSize = ImVec2(192, -1);
         menu.draw_viewer_window();
     };
 
+    int dummySeedsCount = DEFAULT_REGIONS_NUMBER;
     menu.callback_draw_viewer_menu = [&]() { // I had to copy a lot of ImGuiMenu::draw_viewer_menu since I must modify some of its behaviors.
         // Mesh
         if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -447,6 +498,12 @@ int main(int argc, char* argv[]) {
             ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
             ImGui::InputDouble("Relaxation rate", &(viewer.core().animation_max_fps));
             ImGui::PopItemWidth();
+        }
+
+        // Tests
+        if (ImGui::CollapsingHeader("Tests", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::Button("Run Performance Test", ImVec2(-1, 0)))
+                runPerformanceTest(viewer.data());
             if (ImGui::Checkbox("Show ground truth", &showGroundTruth)) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 plotDataOnScreen(viewer.data());
