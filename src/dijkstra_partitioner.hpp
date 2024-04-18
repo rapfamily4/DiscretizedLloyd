@@ -68,7 +68,7 @@ private:
 	// When regions are locked, the partitioner won't be able to assign new regions to nodes,
 	// and parenting can be changed only among nodes of the same region.
 	bool lockRegions = false;
-	bool greedyRelaxation = true;
+	bool inGreedyPhase = true;
 	bool greedyFirstReset = true;
 	bool relaxationOver = false;
 	std::vector<Node> nodes;
@@ -89,13 +89,13 @@ private:
 		for (Node& n : nodes) {
 			n.inSeedConfiguration = false;
 
-			if (useSmartDijkstra && !greedyRelaxation && lockRegions && !seedChanged(n.regionId)) continue;
+			if (optimizeDijkstra && !inGreedyPhase && lockRegions && !seedChanged(n.regionId)) continue;
 
 			n.distFromSeed = +INF;
 			n.parentId = -1;
 			n.frontierIndex = -1;
 			n.status = Unvisited;
-			if (greedyRelaxation) {
+			if (inGreedyPhase) {
 				n.regionId = -1;
 				if (greedyFirstReset) {
 					greedyFirstReset = false;
@@ -113,7 +113,7 @@ private:
 			Node& seed = nodes[seeds[i]];
 			seed.inSeedConfiguration = true;
 
-			if (useSmartDijkstra && !greedyRelaxation && lockRegions && !seedChanged(i)) continue;
+			if (optimizeDijkstra && !inGreedyPhase && lockRegions && !seedChanged(i)) continue;
 
 			seed.regionId = i;
 			seed.distFromSeed = 0;
@@ -217,13 +217,13 @@ private:
 	}
 
 	void scoreAllSeedsGreedy() {
-		assert(greedyRelaxation);
+		assert(inGreedyPhase);
 		for (int s : seeds)
 			nodes[s].scoreAsSeed = 1.0;
 	}
 
 	void scoreAllSeedsPrecise() {
-		assert(!greedyRelaxation);
+		assert(!inGreedyPhase);
 
 		if (!lockRegions)
 			prevStartingScores = startingScores;
@@ -252,7 +252,7 @@ private:
 	}
 
 	bool moveSeedsGreedy() {
-		assert(!lockRegions && greedyRelaxation);
+		assert(!lockRegions && inGreedyPhase);
 		bool movedSeed = false;
 		for (int& s : seeds) {
 			float maxCost = -INF;
@@ -262,7 +262,7 @@ private:
 				if (lockRegions && nodes[s].regionId != nodes[e.target].regionId) continue;
 
 				float newCost = nodes[e.target].subtreeCost * nodes[e.target].subtreeWeight;
-				if (useSmartGreedyRelaxation) {
+				if (greedyRelaxationType == GreedyOption::OPTIMIZED) {
 					for (Edge n : nodes[e.target].edges) {
 						if (nodes[n.target].parentId != s) continue;
 						newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
@@ -285,11 +285,11 @@ private:
 	}
 
 	bool moveSeedsPrecise() {
-		assert(!greedyRelaxation && lockRegions);
+		assert(!inGreedyPhase && lockRegions);
 		bool movedSeed = false;
 		for (int& s : seeds) {
 			int seedId = static_cast<int>(&s - seeds.data());
-			if (useSmartPreciseRelaxation && !startingScoreChanged(seedId)) continue;
+			if (optimizePreciseRelaxation && !startingScoreChanged(seedId)) continue;
 
 			int minSeed = s;
 			int maxSeed = s;
@@ -304,7 +304,7 @@ private:
 					minSeed = e.target;
 				} else if (minSeed == s) { // If a candidate's been already found with the precise heuristics, don't bother falling back to the greedy one.
 					float newCost = nodes[e.target].subtreeCost * nodes[e.target].subtreeWeight;
-					if (useSmartGreedyRelaxation) {
+					if (greedyRelaxationType == GreedyOption::OPTIMIZED) {
 						for (Edge n : nodes[e.target].edges) {
 							if (nodes[n.target].parentId != s) continue;
 							newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
@@ -366,9 +366,15 @@ private:
 	}
 
 public:
-	bool useSmartDijkstra = true;
-	bool useSmartGreedyRelaxation = true;
-	bool useSmartPreciseRelaxation = true;
+	enum GreedyOption {
+		DISABLED,
+		ENABLED,
+		OPTIMIZED,
+	};
+
+	GreedyOption greedyRelaxationType = GreedyOption::OPTIMIZED;
+	bool optimizePreciseRelaxation = true;
+	bool optimizeDijkstra = true;
 
 
 	DijkstraPartitioner() {}
@@ -382,7 +388,7 @@ public:
 
 	void resetState() {
 		lockRegions = false;
-		greedyRelaxation = true;
+		inGreedyPhase = greedyRelaxationType == GreedyOption::DISABLED ? false : true;
 		greedyFirstReset = true;
 		relaxationOver = false;
 		prevSeeds.clear();
@@ -426,22 +432,22 @@ public:
 
 		sortNodeIdsByDistance();
 		updateSubtreeInfo();
-		if (greedyRelaxation) {
+		if (inGreedyPhase) {
 			swatch.begin();
 			scoreAllSeedsGreedy();
-			greedyRelaxation = moveSeedsGreedy();
+			inGreedyPhase = moveSeedsGreedy();
 			greedyPerformance.recordIteration(swatch.end());
 		}
 		else {
-			swatch.begin();
+			if (!lockRegions) swatch.begin();
 			scoreAllSeedsPrecise();
 			lockRegions = true; // ALWAYS lock regions before moving seeds
 			lockRegions = moveSeedsPrecise();
 			if (!lockRegions) {
 				if (prevPreciseSeeds != seeds) prevPreciseSeeds = seeds;
 				else relaxationOver = true;
+				precisePerformance.recordIteration(swatch.end());
 			}
-			precisePerformance.recordIteration(swatch.end());
 		}
 	}
 

@@ -36,7 +36,11 @@ public:
 	unsigned int getIterations() const { return iterationsCount; }
 	double getMinTime() const { return minTime; }
 	double getMaxTime() const { return maxTime; }
-	double getAvgTime() const { return totTime / iterationsCount; }
+	double getAvgTime() const { 
+		if (iterationsCount > 0)
+			return totTime / iterationsCount;
+		return 0.0;
+	}
 };
 
 #endif

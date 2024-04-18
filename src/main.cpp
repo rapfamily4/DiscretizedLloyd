@@ -28,6 +28,26 @@ bool denseGraph = false;
 bool showGroundTruth = false;
 
 
+void printPerformanceTestResults(igl::opengl::ViewerData& data, double runningTime) {
+    std::cout << "-----------\n";
+    std::cout << "Voronoi (" << (denseGraph ? "dense " : "") << (data.face_based ? "triangle" : "vertex") << "-based): " << runningTime << "ms\n";
+    std::cout << "Seeds count: " << partitioner.getSeeds().size() << "\n";
+    const PerformanceStatistics& dPerf = partitioner.getDijkstraPerformance();
+    const PerformanceStatistics& gPerf = partitioner.getGreedyPerformance();
+    const PerformanceStatistics& pPerf = partitioner.getPrecisePerformance();
+    auto printStats = [&](const char* header, const PerformanceStatistics& perf) {
+        std::cout << header
+            << "iterations: " << perf.getIterations()
+            << ", min: " << perf.getMinTime() << "ms"
+            << ", max: " << perf.getMaxTime() << "ms"
+            << ", avg: " << perf.getAvgTime() << "ms\n";
+        };
+    printStats(partitioner.optimizeDijkstra ? "Dijkstra (opt):\t" : "Dijkstra:\t", dPerf);
+    printStats(partitioner.greedyRelaxationType == DijkstraPartitioner::GreedyOption::OPTIMIZED ? "Greedy (opt):\t" : "Greedy:\t\t", gPerf);
+    printStats(partitioner.optimizePreciseRelaxation ? "Precise (opt):\t" : "Precise:\t", pPerf);
+    std::cout << "\n";
+}
+
 void groundTruth(igl::opengl::ViewerData& data, std::vector<int>& regionAssignments, Eigen::MatrixXd& barycenters) {
     assert(showGroundTruth);
 
@@ -156,23 +176,7 @@ void relaxPartitioner(igl::opengl::ViewerData& data) {
     swatch.begin();
     partitioner.resetState();
     partitioner.fullRelaxation();
-    std::cout << "-----------\n";
-    std::cout << "Voronoi (" << (denseGraph ? "dense " : "") << (data.face_based ? "triangle" : "vertex") << "-based): " << swatch.end() << "ms\n";
-    std::cout << "Seeds count: " << partitioner.getSeeds().size() << "\n";
-    const PerformanceStatistics& dPerf = partitioner.getDijkstraPerformance();
-    const PerformanceStatistics& gPerf = partitioner.getGreedyPerformance();
-    const PerformanceStatistics& pPerf = partitioner.getPrecisePerformance();
-    auto printStats = [&](const char* header, const PerformanceStatistics& perf) {
-        std::cout << header
-                  << " iterations: " << perf.getIterations()
-                  << ", min: " << perf.getMinTime() << "ms"
-                  << ", max: " << perf.getMaxTime() << "ms"
-                  << ", avg: " << perf.getAvgTime() << "ms\n";
-    };
-    printStats(partitioner.useSmartDijkstra ? "Dijkstra (smart):" : "Dijkstra:\t", dPerf);
-    printStats(partitioner.useSmartGreedyRelaxation ? "Greedy (smart):\t" : "Greedy:\t\t", gPerf);
-    printStats(partitioner.useSmartPreciseRelaxation ? "Precise (smart):" : "Precise:\t", pPerf);
-    std::cout << "\n";
+    printPerformanceTestResults(data, swatch.end());
     plotDataOnScreen(data);
 }
 
@@ -311,6 +315,12 @@ int main(int argc, char* argv[]) {
     viewer.callback_pre_draw = &preDrawCallback;
 
     int dummySeedsCount = DEFAULT_REGIONS_NUMBER;
+    menu.callback_draw_viewer_window = [&]() {
+        //ImGui::SetNextWindowSizeConstraints(ImVec2(192, -1), ImVec2(-1, -1));
+        ImGui::GetStyle().WindowMinSize = ImVec2(192, -1);
+        menu.draw_viewer_window();
+    };
+
     menu.callback_draw_viewer_menu = [&]() { // I had to copy a lot of ImGuiMenu::draw_viewer_menu since I must modify some of its behaviors.
         // Mesh
         if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -431,9 +441,9 @@ int main(int argc, char* argv[]) {
                 relaxPartitionerOnce(viewer.data());
             }
             ImGui::Checkbox("Relax seeds over time", &viewer.core().is_animating);
-            ImGui::Checkbox("Smart Dijkstra", &partitioner.useSmartDijkstra);
-            ImGui::Checkbox("Smart greedy relaxation", &partitioner.useSmartGreedyRelaxation);
-            ImGui::Checkbox("Smart precise relaxation", &partitioner.useSmartPreciseRelaxation);
+            ImGui::Combo("Greedy relaxation", (int*)(&partitioner.greedyRelaxationType), "Disabled\0Enabled\0Optimized\0\0");
+            ImGui::Checkbox("Optimize precise relaxation", &partitioner.optimizePreciseRelaxation);
+            ImGui::Checkbox("Optimize Dijkstra", &partitioner.optimizeDijkstra);
             ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
             ImGui::InputDouble("Relaxation rate", &(viewer.core().animation_max_fps));
             ImGui::PopItemWidth();
