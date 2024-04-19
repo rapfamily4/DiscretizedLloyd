@@ -10,8 +10,8 @@ function(copy_folder target source dest)
     )
 endfunction()
 
-# C++ 20 standard
-set(CMAKE_CXX_STANDARD 20)
+# C++ standard
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Fetch libraries
@@ -32,6 +32,7 @@ FetchContent_MakeAvailable(libigl glm)
 igl_include(opengl)
 igl_include(glfw)
 igl_include(imgui)
+igl_include(embree)
 
 # Options
 # option (LIBIGL_WITH_OPENGL_GLFW_IMGUI "Use ImGui" ON)
@@ -49,6 +50,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     igl::opengl
     igl::glfw
     igl::imgui
+    igl::embree
 )
 
 # Copying models into build

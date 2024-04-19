@@ -111,7 +111,7 @@ public:
                 HalfEdge edge(i, j, edgeLength(i, j));
                 HalfEdge flipped = edge.flip();
 
-                if (edges.contains(flipped)) {
+                if (edges.find(flipped) != edges.end()) {
                     int n = edges[flipped];
                     assert(t != n);
                     int oppositeVert1;
@@ -147,7 +147,7 @@ public:
                 int i = F(t, v), j = F(t, (v + 1) % F.cols());
                 HalfEdge edge(i, j, edgeLength(i, j));
                 HalfEdge flipped = edge.flip();
-                if (edges.contains(flipped)) {
+                if (edges.find(flipped) != edges.end()) {
                     int n = edges[flipped];
                     assert(t != n);
                     adjacency[t].push_back(n);
