@@ -73,7 +73,7 @@ private:
 	bool relaxationOver = false;
 	std::vector<Node> nodes;
 	std::vector<int> seeds;
-	std::vector<int> seedsAtStart; // The configuration of seeds at the moment it was generated.
+	std::vector<int> seedsAtStart; // The configuration of seeds at the moment it was generated (or manually set).
 	std::vector<int> prevSeeds; // The configuration of seeds at the previous iteration of the relaxation.
 	std::vector<int> prevPreciseSeeds; // The configuration of seeds at the end of the previous cycle of the precise relaxation.
 	std::vector<int> frontier; // Implemented as a heap.
@@ -395,6 +395,7 @@ public:
 		relaxationOver = false;
 		prevSeeds.clear();
 		prevPreciseSeeds.clear();
+		startingScores.clear();
 		prevStartingScores.clear();
 		dijkstraPerformance.reset();
 		greedyPerformance.reset();
@@ -439,8 +440,7 @@ public:
 			scoreAllSeedsGreedy();
 			inGreedyPhase = moveSeedsGreedy();
 			greedyPerformance.recordIteration(swatch.end());
-		}
-		else {
+		} else {
 			if (!lockRegions) swatch.begin();
 			scoreAllSeedsPrecise();
 			lockRegions = true; // ALWAYS lock regions before moving seeds
@@ -469,7 +469,9 @@ public:
 		}
 	}
 
-	void restoreSeeds() { seeds = seedsAtStart; }
+	void restoreSeeds() {
+		seeds = seedsAtStart;
+	}
 
 	void nodewiseRegionAssignments(std::vector<int>& assignments) const {
 		assert(assignments.size() == 0);
@@ -484,17 +486,34 @@ public:
 				treeEdges.push_back(std::pair<int, int>(i, nodes[i].parentId));
 	}
 
-	int getNodesCount() const { return nodes.size(); }
+	bool isNodeInSeedConfiguration(int nodeId) const {
+		assert(nodeId >= 0 && nodeId < nodes.size());
+		return nodes[nodeId].inSeedConfiguration;
+	}
 
-	const std::vector<int>& getSeeds() const { return seeds; }
+	int getNodesCount() const {
+		return nodes.size();
+	}
 
-	const PerformanceStatistics& getDijkstraPerformance() const { return dijkstraPerformance; }
+	const std::vector<int>& getSeeds() const {
+		return seeds;
+	}
 
-	const PerformanceStatistics& getGreedyPerformance() const { return greedyPerformance; }
+	const PerformanceStatistics& getDijkstraPerformance() const {
+		return dijkstraPerformance;
+	}
 
-	const PerformanceStatistics& getPrecisePerformance() const { return precisePerformance; }
+	const PerformanceStatistics& getGreedyPerformance() const {
+		return greedyPerformance;
+	}
 
-	void setSeeds(const std::vector<int>& newSeeds) { seeds = newSeeds; }
+	const PerformanceStatistics& getPrecisePerformance() const {
+		return precisePerformance;
+	}
+
+	void setSeeds(const std::vector<int>& newSeeds) {
+		seedsAtStart = seeds = newSeeds;
+	}
 
 	int setSeedsCount(int seedsCount) {
 		assert(seedsCount > 0);

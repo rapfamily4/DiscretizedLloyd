@@ -1,8 +1,6 @@
 #include <vector>
 #include <map>
-#include <exception>
 #include <string>
-#include <cstddef>
 #include <algorithm>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -10,6 +8,7 @@
 #include <igl/opengl/glfw/imgui/ImGuiPlugin.h>
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
+#include <igl/unproject_onto_mesh.h>
 #include <glm/glm.hpp>
 #include <glm/gtx/color_space.hpp>
 #include "dijkstra_partitioner.hpp"
@@ -26,6 +25,7 @@ Model model;
 Stopwatch swatch;
 bool denseGraph = false;
 bool showGroundTruth = false;
+int dummySeedsCount = DEFAULT_REGIONS_NUMBER; // Used for simplifying UI coding.
 
 
 void printPerformanceTestResults(igl::opengl::ViewerData& data, double runningTime) {
@@ -321,6 +321,29 @@ bool keyboardInputCallback(igl::opengl::glfw::Viewer& viewer, unsigned char key,
     return false;
 }
 
+bool mouseDownCallback(igl::opengl::glfw::Viewer& viewer, int button, int modifier) {
+    if (button != 0 /* Left Mouse Button */ || modifier != IGL_MOD_CONTROL) return false;
+    
+    float x = viewer.current_mouse_x;
+    float y = viewer.core().viewport(3) - viewer.current_mouse_y;
+    int pickedTriangle;
+    Eigen::Vector3f barycentricCoords;
+    if (igl::unproject_onto_mesh(Eigen::Vector2f(x, y), viewer.core().view, viewer.core().proj, viewer.core().viewport, model.getVerticesMatrix(),
+        model.getFacesMatrix(), pickedTriangle, barycentricCoords)) {
+
+        int nodeToAdd = viewer.data().face_based ? pickedTriangle : model.vertexFromBarycentricCoords(pickedTriangle, barycentricCoords);
+        if (!partitioner.isNodeInSeedConfiguration(nodeToAdd)) {
+            std::vector<int> newSeeds = partitioner.getSeeds();
+            newSeeds.push_back(nodeToAdd);
+            partitioner.setSeeds(newSeeds);
+            runPartitioner(viewer.data());
+            dummySeedsCount++;
+        }
+        return true;
+    }
+    return false;
+}
+
 bool preDrawCallback(igl::opengl::glfw::Viewer& viewer) {
     if (viewer.core().is_animating)
         relaxPartitionerOnce(viewer.data());
@@ -329,12 +352,13 @@ bool preDrawCallback(igl::opengl::glfw::Viewer& viewer) {
 
 int main(int argc, char* argv[]) {
     igl::opengl::glfw::Viewer viewer;
-    std::cout << "DijkstraPartitioner usage:\n"
-        << "  C,c     Toggle dense graph\n"
-        << "  G,g     Generate random seeds\n"
-        << "  N,n     Move seeds randomly\n"
-        << "  R,r     Relax seeds once\n"
-        << "  V,v     Toggle ground truth\n";
+    std::cout << "\nDijkstraPartitioner usage:\n"
+        << "  C,c                   Toggle dense graph\n"
+        << "  G,g                   Generate random seeds\n"
+        << "  N,n                   Move seeds randomly\n"
+        << "  R,r                   Relax seeds once\n"
+        << "  V,v                   Toggle ground truth\n"
+        << "  CTRL + Left Click     Turn clicked node into seed\n\n";
 
     // Load mesh from file.
     std::string modelPath = argc > 1 ? std::string(argv[1]) : "./models/plane.obj";
@@ -353,15 +377,15 @@ int main(int argc, char* argv[]) {
     // Viewer setup.
     viewerSetup(viewer);
     viewer.callback_key_pressed = &keyboardInputCallback; // Do NOT mistake it with viewer.callback_key_down
+    viewer.callback_mouse_down = &mouseDownCallback;
     viewer.callback_pre_draw = &preDrawCallback;
 
     menu.callback_draw_viewer_window = [&]() {
         //ImGui::SetNextWindowSizeConstraints(ImVec2(192, -1), ImVec2(-1, -1));
-        ImGui::GetStyle().WindowMinSize = ImVec2(192, -1);
+        ImGui::GetStyle().WindowMinSize = ImVec2(192, 1);
         menu.draw_viewer_window();
     };
 
-    int dummySeedsCount = DEFAULT_REGIONS_NUMBER;
     menu.callback_draw_viewer_menu = [&]() { // I had to copy a lot of ImGuiMenu::draw_viewer_menu since I must modify some of its behaviors.
         // Mesh
         if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen)) {

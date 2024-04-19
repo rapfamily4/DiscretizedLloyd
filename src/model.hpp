@@ -205,6 +205,18 @@ public:
         assert(vertexIds.size() == triangleIds.size());
     }
 
+    int vertexFromBarycentricCoords(int triangleId, Eigen::Vector3f& barycentricCoords) {
+        float maxCoord = -INF;
+        int result = F(triangleId, 0);
+        for (int c = 0; c < barycentricCoords.size(); c++) {
+            if (barycentricCoords(c) > maxCoord) {
+                maxCoord = barycentricCoords(c);
+                result = F(triangleId, c);
+            }
+        }
+        return result;
+    }
+
     void verticesPositions(std::vector<glm::vec3>& positions) {
         positions.clear();
         positions.resize(V.rows());
