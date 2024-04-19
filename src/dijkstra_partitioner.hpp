@@ -260,7 +260,7 @@ private:
 			int candidate = s;
 			for (Edge e : nodes[s].edges) {
 				if (nodes[e.target].inSeedConfiguration) continue;
-				if (lockRegions && nodes[s].regionId != nodes[e.target].regionId) continue;
+				if (nodes[s].regionId != nodes[e.target].regionId) continue;
 
 				float newCost = nodes[e.target].subtreeCost * nodes[e.target].subtreeWeight;
 				if (greedyRelaxationType == GreedyOption::OPTIMIZED) {
