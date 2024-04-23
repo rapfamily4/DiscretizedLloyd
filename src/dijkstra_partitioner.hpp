@@ -469,6 +469,33 @@ public:
 		}
 	}
 
+	bool moveSeedToNode(int nodeId) {
+		assert(nodeId >= 0 && nodeId < nodes.size());
+		if (isNodeInSeedConfiguration(nodeId)) return false;
+
+		seeds[nodes[nodeId].regionId] = nodeId;
+		seedsAtStart = seeds;
+		return true;
+	}
+
+	bool addSeed(int nodeId) {
+		assert(nodeId >= 0 && nodeId < nodes.size());
+		if (isNodeInSeedConfiguration(nodeId)) return false;
+
+		seeds.push_back(nodeId);
+		seedsAtStart = seeds;
+		return true;
+	}
+
+	bool removeSeedOfNode(int nodeId) {
+		assert(nodeId >= 0 && nodeId < nodes.size());
+		if (seeds.size() <= 1) return false;
+
+		seeds.erase(seeds.begin() + nodes[nodeId].regionId);
+		seedsAtStart = seeds;
+		return true;
+	}
+
 	void restoreSeeds() {
 		seeds = seedsAtStart;
 	}
@@ -512,7 +539,8 @@ public:
 	}
 
 	void setSeeds(const std::vector<int>& newSeeds) {
-		seedsAtStart = seeds = newSeeds;
+		seeds = newSeeds;
+		seedsAtStart = seeds;
 	}
 
 	int setSeedsCount(int seedsCount) {
