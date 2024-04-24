@@ -20,18 +20,59 @@
 #define DEFAULT_REGIONS_NUMBER 16
 
 
+enum GraphType {
+    VERTEX,
+    VERTEX_DENSE,
+    TRIANGLE,
+    TRIANGLE_DENSE,
+    MIXED,
+};
+
 DijkstraPartitioner partitioner;
 Model model;
 Stopwatch swatch;
-bool denseGraph = false;
+GraphType graphType;
 bool showGroundTruth = false;
 bool isDraggingRegion = false;
-int dummySeedsCount = DEFAULT_REGIONS_NUMBER; // Used for simplifying UI coding.
 
+
+inline bool isVertexBased(GraphType type) {
+    return type == GraphType::VERTEX || type == GraphType::VERTEX_DENSE;
+}
+
+inline bool isTriangleBased(GraphType type) {
+    return type == GraphType::TRIANGLE || type == GraphType::TRIANGLE_DENSE;
+}
+
+inline bool isMixed(GraphType type) {
+    return type == GraphType::MIXED;
+}
+
+inline bool isDense(GraphType type) {
+    return type == GraphType::VERTEX_DENSE || type == GraphType::TRIANGLE_DENSE;
+}
 
 void printPerformanceTestResults(igl::opengl::ViewerData& data, double runningTime) {
     std::cout << "-----------\n";
-    std::cout << "Voronoi (" << (denseGraph ? "dense " : "") << (data.face_based ? "triangle" : "vertex") << "-based): " << runningTime << "ms\n";
+    std::cout << "Voronoi: " << runningTime << "ms\n";
+    std::cout << "Graph type: ";
+    switch (graphType) {
+        case GraphType::VERTEX:
+            std::cout << "vertex-based\n";
+            break;
+        case GraphType::VERTEX_DENSE:
+            std::cout << "vertex-based (dense)\n";
+            break;
+        case GraphType::TRIANGLE:
+            std::cout << "triangle-based\n";
+            break;
+        case GraphType::TRIANGLE_DENSE:
+            std::cout << "triangle-based (dense)\n";
+            break;
+        case GraphType::MIXED:
+            std::cout << "mixed\n";
+            break;
+    }
     std::cout << "Seeds count: " << partitioner.getSeeds().size() << "\n";
     const PerformanceStatistics& dPerf = partitioner.getDijkstraPerformance();
     const PerformanceStatistics& gPerf = partitioner.getGreedyPerformance();
@@ -43,24 +84,23 @@ void printPerformanceTestResults(igl::opengl::ViewerData& data, double runningTi
             << ", max: " << perf.getMaxTime() << "ms"
             << ", avg: " << perf.getAvgTime() << "ms\n";
     };
-    
     if (partitioner.greedyRelaxationType != DijkstraPartitioner::GreedyOption::DISABLED) {
-        printStats(partitioner.greedyRelaxationType == DijkstraPartitioner::GreedyOption::OPTIMIZED ? "Greedy (opt):\t" : "Greedy:\t\t", gPerf);
+        printStats(partitioner.greedyRelaxationType == DijkstraPartitioner::GreedyOption::EXTENDED ? "Greedy (ext):\t" : "Greedy:\t\t", gPerf);
     } else std::cout << "Greedy:\t\tDISABLED\n";
     printStats(partitioner.optimizePreciseRelaxation ? "Precise (opt):\t" : "Precise:\t", pPerf);
     printStats(partitioner.optimizeDijkstra ? "Dijkstra (opt):\t" : "Dijkstra:\t", dPerf);
     std::cout << "\n";
 }
 
-void groundTruth(igl::opengl::ViewerData& data, std::vector<int>& regionAssignments, Eigen::MatrixXd& barycenters) {
+void groundTruth(std::vector<int>& regionAssignments, Eigen::MatrixXd& barycenters) {
     assert(showGroundTruth);
 
     std::vector<glm::vec3> nodePos;
     std::vector<float> nodeArea;
-    if (data.face_based) {
+    if (graphType == GraphType::TRIANGLE || graphType == GraphType::TRIANGLE_DENSE) {
         model.triangleBarycenters(nodePos);
         model.triangleAreas(nodeArea);
-    } else {
+    } else { // Ground truth for mixed graph is vertex based.
         model.verticesPositions(nodePos);
         model.vertexSurroundingAreas(nodeArea);
     }
@@ -101,7 +141,7 @@ void regionColors(int regionsNumber, std::vector<glm::vec3>& colors) {
 }
 
 void assignColorsToModel(igl::opengl::ViewerData& data, const std::vector<int>& regionAssignments) {
-    Eigen::MatrixXd C(regionAssignments.size(), 3);
+    Eigen::MatrixXd C(isMixed(graphType) ? model.getVerticesMatrix().rows() : regionAssignments.size(), 3);
     std::vector<glm::vec3> regionCols;
     regionColors(partitioner.getSeeds().size(), regionCols);
 
@@ -114,8 +154,11 @@ void assignColorsToModel(igl::opengl::ViewerData& data, const std::vector<int>& 
 
 void plotTrees(igl::opengl::ViewerData& data) {
     std::vector<glm::vec3> nodePos;
-    if (data.face_based) model.triangleBarycenters(nodePos);
-    else model.verticesPositions(nodePos);
+    if (isTriangleBased(graphType))
+        model.triangleBarycenters(nodePos);
+    else if (isVertexBased(graphType))
+        model.verticesPositions(nodePos);
+    else model.verticesAndTrianglesPositions(nodePos);
 
     std::vector<int> seeds = partitioner.getSeeds();
     Eigen::MatrixXd S(seeds.size(), 3);
@@ -143,7 +186,7 @@ void plotDataOnScreen(igl::opengl::ViewerData& data) {
     std::vector<int> regionAssignments;
     if (showGroundTruth) {
         Eigen::MatrixXd barycenters = Eigen::MatrixXd::Zero(partitioner.getSeeds().size(), 3);
-        groundTruth(data, regionAssignments, barycenters);
+        groundTruth(regionAssignments, barycenters);
         data.add_points(barycenters, Eigen::RowVector3d(0, 0, 0));
     } else {
         plotTrees(data);
@@ -153,16 +196,35 @@ void plotDataOnScreen(igl::opengl::ViewerData& data) {
 }
 
 void initPartitioner() {
-    std::vector<float> nodeWeights;
-    model.vertexSurroundingAreas(nodeWeights);
+    std::vector<float> weights;
     std::vector<std::vector<int>> adjacency;
-    std::vector<std::vector<float>> edgeWeights;
-    if (denseGraph) model.denseVertexAdjacency(adjacency, edgeWeights);
-    else model.vertexAdjacency(adjacency, edgeWeights);
+    std::vector<std::vector<float>> costs;
+    switch (graphType) {
+        case GraphType::TRIANGLE:
+            model.triangleAreas(weights);
+            model.triangleAdjacency(adjacency, costs);
+            break;
+        case GraphType::TRIANGLE_DENSE:
+            model.triangleAreas(weights);
+            model.denseTriangleAdjacency(adjacency, costs);
+            break;
+        case GraphType::VERTEX:
+            model.vertexSurroundingAreas(weights);
+            model.vertexAdjacency(adjacency, costs);
+            break;
+        case GraphType::VERTEX_DENSE:
+            model.vertexSurroundingAreas(weights);
+            model.denseVertexAdjacency(adjacency, costs);
+            break;
+        case GraphType::MIXED:
+            model.vertexAndTriangleAreas(weights);
+            model.mixedAdjacency(adjacency, costs);
+            break;
+    }
 
     int regionsNumber = partitioner.getSeeds().size();
     if (regionsNumber == 0) regionsNumber = DEFAULT_REGIONS_NUMBER;
-    partitioner = DijkstraPartitioner(nodeWeights, adjacency, edgeWeights, regionsNumber);
+    partitioner = DijkstraPartitioner(weights, adjacency, costs, regionsNumber);
 }
 
 void runPartitioner(igl::opengl::ViewerData& data) {
@@ -196,88 +258,110 @@ void relaxPartitionerOnce(igl::opengl::ViewerData& data) {
     plotDataOnScreen(data);
 }
 
-void setGraphType(igl::opengl::ViewerData& data, bool toFaceBased) {
-    if ((toFaceBased && data.face_based) || (!toFaceBased && !data.face_based)) return;
+// TODO: Refactor this mess...
+void setGraphType(igl::opengl::ViewerData& data, GraphType targetType) {
+    if (targetType == graphType) return;
 
     std::vector<int> newSeeds;
-    std::vector<float> nodeWeights;
+    std::vector<float> weights;
     std::vector<std::vector<int>> adjacency;
-    std::vector<std::vector<float>> edgeWeights;
-    data.set_face_based(toFaceBased);
-    if (data.face_based) {
+    std::vector<std::vector<float>> costs;
+    data.set_face_based(isTriangleBased(targetType));
+    if (isTriangleBased(targetType) && isVertexBased(graphType)) {
         model.trianglesFromVertices(partitioner.getSeeds(), newSeeds);
-        model.triangleAreas(nodeWeights);
-        if (denseGraph) model.denseTriangleAdjacency(adjacency, edgeWeights);
-        else model.triangleAdjacency(adjacency, edgeWeights);
-    } else {
+        model.triangleAreas(weights);
+        if (isDense(targetType)) model.denseTriangleAdjacency(adjacency, costs);
+        else model.triangleAdjacency(adjacency, costs);
+    }
+    else if (isVertexBased(targetType) && isTriangleBased(graphType)) {
         model.firstVerticesFromTriangles(partitioner.getSeeds(), newSeeds);
-        model.vertexSurroundingAreas(nodeWeights);
-        if (denseGraph) model.denseVertexAdjacency(adjacency, edgeWeights);
-        else model.vertexAdjacency(adjacency, edgeWeights);
+        model.vertexSurroundingAreas(weights);
+        if (isDense(targetType)) model.denseVertexAdjacency(adjacency, costs);
+        else model.vertexAdjacency(adjacency, costs);
     }
+    else if (isMixed(targetType)) { 
+        newSeeds = partitioner.getSeeds();
+        if (isTriangleBased(graphType)) {
+            for (int& s : newSeeds)
+                s += model.getVerticesMatrix().rows();
+        }
+        model.vertexAndTriangleAreas(weights);
+        model.mixedAdjacency(adjacency, costs);
+    }
+    else if (isMixed(graphType)) {
+        newSeeds = partitioner.getSeeds();
+        for (int& s : newSeeds) {
+            if (isTriangleBased(targetType)) {
+                if (s >= model.getVerticesMatrix().rows()) {
+                    s -= model.getVerticesMatrix().rows();
+                } else s = model.triangleFromVertex(s);
+            }
+            else if (s >= model.getVerticesMatrix().rows()) {
+                s = model.firstVertexFromTriangle(s - model.getVerticesMatrix().rows());
+            }
+        }
+        if (isTriangleBased(targetType)) {
+            model.triangleAreas(weights);
+            if (isDense(targetType)) model.denseTriangleAdjacency(adjacency, costs);
+            else model.triangleAdjacency(adjacency, costs);
+        }
+        else {
+            model.vertexSurroundingAreas(weights);
+            if (isDense(targetType)) model.denseVertexAdjacency(adjacency, costs);
+            else model.vertexAdjacency(adjacency, costs);
+        }
+    }
+    else if ((isDense(targetType) || isDense(graphType))) {
+        newSeeds = partitioner.getSeeds();
+        if (isTriangleBased(targetType)) {
+            model.triangleAreas(weights);
+            if (isDense(targetType)) model.denseTriangleAdjacency(adjacency, costs);
+            else model.triangleAdjacency(adjacency, costs);
+        } else {
+            model.vertexSurroundingAreas(weights);
+            if (isDense(targetType)) model.denseVertexAdjacency(adjacency, costs);
+            else model.vertexAdjacency(adjacency, costs);
+        }
+    }
+    graphType = targetType;
     partitioner.setSeeds(newSeeds);
-    partitioner.generateNodes(nodeWeights, adjacency, edgeWeights);
-    runPartitioner(data);
-}
-
-void setGraphDensity(igl::opengl::ViewerData& data, bool toDense) {
-    if ((toDense && denseGraph) || (!toDense && !denseGraph)) return;
-
-    std::vector<float> nodeWeights;
-    std::vector<std::vector<int>> adjacency;
-    std::vector<std::vector<float>> edgeWeights;
-    denseGraph = toDense;
-    if (data.face_based) {
-        model.triangleAreas(nodeWeights);
-        if (denseGraph) model.denseTriangleAdjacency(adjacency, edgeWeights);
-        else model.triangleAdjacency(adjacency, edgeWeights);
-    } else {
-        model.vertexSurroundingAreas(nodeWeights);
-        if (denseGraph) model.denseVertexAdjacency(adjacency, edgeWeights);
-        else model.vertexAdjacency(adjacency, edgeWeights);
-    }
-    partitioner.generateNodes(nodeWeights, adjacency, edgeWeights);
+    partitioner.generateNodes(weights, adjacency, costs);
     runPartitioner(data);
 }
 
 void runPerformanceTest(igl::opengl::ViewerData& data) {
     // Save parameters before the test.
     partitioner.restoreSeeds();
-    bool faceAtStart = data.face_based;
-    bool denseAtStart = denseGraph;
+    GraphType typeAtStart = graphType;
     DijkstraPartitioner::GreedyOption greedyAtStart = partitioner.greedyRelaxationType;
     bool preciseAtStart = partitioner.optimizePreciseRelaxation;
     bool dijkstraAtStart = partitioner.optimizeDijkstra;
 
     // Do all tests.
     // Forgive me, Father.
-    for (int face = 0; face < 2; face++) {
-        setGraphType(data, (bool)face);
-        for (int dense = 0; dense < 2; dense++) {
-            setGraphDensity(data, (bool)dense);
-            for (int greedy = 0; greedy < 3; greedy++)
-                for (int precise = 0; precise < 2; precise++)
-                    for (int dijkstra = 0; dijkstra < 2; dijkstra++) {
-                        partitioner.restoreSeeds();
-                        partitioner.greedyRelaxationType = (DijkstraPartitioner::GreedyOption)greedy;
-                        partitioner.optimizePreciseRelaxation = (bool)precise;
-                        partitioner.optimizeDijkstra = (bool)dijkstra;
-                        relaxPartitioner(data, false);
-                    }
-        }
+    for (int type = 0; type < 5; type++) {
+        setGraphType(data, (GraphType)type);
+        for (int greedy = 0; greedy < 3; greedy++)
+            for (int precise = 0; precise < 2; precise++)
+                for (int dijkstra = 0; dijkstra < 2; dijkstra++) {
+                    partitioner.restoreSeeds();
+                    partitioner.greedyRelaxationType = (DijkstraPartitioner::GreedyOption)greedy;
+                    partitioner.optimizePreciseRelaxation = (bool)precise;
+                    partitioner.optimizeDijkstra = (bool)dijkstra;
+                    relaxPartitioner(data, false);
+                }
     }
     plotDataOnScreen(data);
 
     // Restore previous parameters.
-    setGraphType(data, (bool)faceAtStart);
-    setGraphDensity(data, (bool)denseAtStart);
+    setGraphType(data, typeAtStart);
     partitioner.greedyRelaxationType = greedyAtStart;
     partitioner.optimizePreciseRelaxation = preciseAtStart;
     partitioner.optimizeDijkstra = dijkstraAtStart;
 }
 
 void viewerSetup(igl::opengl::glfw::Viewer& viewer) {
-    viewer.data().set_face_based(false);
+    setGraphType(viewer.data(), GraphType::VERTEX);
     viewer.data().point_size = 8.;
     viewer.data().show_lines = false;
     viewer.core().is_animating = false;
@@ -287,14 +371,9 @@ void viewerSetup(igl::opengl::glfw::Viewer& viewer) {
 
 bool keyboardInputCallback(igl::opengl::glfw::Viewer& viewer, unsigned char key, int modifier) {
     switch (key) {
-        case 'C':
-        case 'c':
-            setGraphDensity(viewer.data(), !denseGraph);
-            return true;
-
         case 'F':
         case 'f':
-            setGraphType(viewer.data(), !viewer.data().face_based);
+            setGraphType(viewer.data(), viewer.data().face_based ? GraphType::VERTEX : GraphType::TRIANGLE);
             return true;
 
         case 'G':
@@ -332,22 +411,27 @@ bool mouseDownCallback(igl::opengl::glfw::Viewer& viewer, int button, int modifi
     if (igl::unproject_onto_mesh(Eigen::Vector2f(x, y), viewer.core().view, viewer.core().proj, viewer.core().viewport, model.getVerticesMatrix(),
         model.getFacesMatrix(), pickedTriangle, barycentricCoords)) {
 
-        int pickedNode = viewer.data().face_based ? pickedTriangle : model.vertexFromBarycentricCoords(pickedTriangle, barycentricCoords);
+        int pickedVertex = model.vertexFromBarycentricCoords(pickedTriangle, barycentricCoords);
+        int pickedTriangleMixed = pickedTriangle + model.getVerticesMatrix().rows();
         switch (modifier) {
             case IGL_MOD_CONTROL:
-                if (partitioner.addSeed(pickedNode)) {
+                if (isTriangleBased(graphType) && partitioner.addSeed(pickedTriangle) ||
+                    partitioner.addSeed(pickedVertex) || // Mixed graph gives priority to vertices over triangles.
+                    partitioner.addSeed(pickedTriangleMixed)) {
                     runPartitioner(viewer.data());
-                    dummySeedsCount++;
                 }
                 return true;
             case IGL_MOD_CONTROL | IGL_MOD_SHIFT:
-                if (partitioner.removeSeedOfNode(pickedNode)) {
+                if (isTriangleBased(graphType) && partitioner.removeSeedOfNode(pickedTriangle) ||
+                    partitioner.removeSeedOfNode(pickedVertex) || // Mixed graph gives priority to vertices over triangles.
+                    partitioner.removeSeedOfNode(pickedTriangleMixed)) {
                     runPartitioner(viewer.data());
-                    dummySeedsCount--;
                 }
                 return true;
             case IGL_MOD_ALT:
-                if (partitioner.moveSeedToNode(pickedNode)) {
+                if (isTriangleBased(graphType) && partitioner.moveSeedToNode(pickedTriangle) ||
+                    partitioner.moveSeedToNode(pickedVertex) || // Mixed graph gives priority to vertices over triangles.
+                    partitioner.moveSeedToNode(pickedTriangleMixed)) {
                     isDraggingRegion = true;
                     runPartitioner(viewer.data());
                 }
@@ -367,8 +451,11 @@ bool mouseMoveCallback(igl::opengl::glfw::Viewer& viewer, int x, int y) {
     if (igl::unproject_onto_mesh(Eigen::Vector2f(x, y), viewer.core().view, viewer.core().proj, viewer.core().viewport, model.getVerticesMatrix(),
         model.getFacesMatrix(), pickedTriangle, barycentricCoords)) {
 
-        int pickedNode = viewer.data().face_based ? pickedTriangle : model.vertexFromBarycentricCoords(pickedTriangle, barycentricCoords);
-        if (partitioner.moveSeedToNode(pickedNode))
+        int pickedVertex = model.vertexFromBarycentricCoords(pickedTriangle, barycentricCoords);
+        int pickedTriangleMixed = pickedTriangle + model.getVerticesMatrix().rows();
+        if (isTriangleBased(graphType) && partitioner.moveSeedToNode(pickedTriangle) ||
+            partitioner.moveSeedToNode(pickedVertex) || // Mixed graph gives priority to vertices over triangles.
+            partitioner.moveSeedToNode(pickedTriangleMixed))
             runPartitioner(viewer.data());
         return true;
     }
@@ -390,7 +477,6 @@ bool preDrawCallback(igl::opengl::glfw::Viewer& viewer) {
 int main(int argc, char* argv[]) {
     igl::opengl::glfw::Viewer viewer;
     std::cout << "\nDijkstraPartitioner usage:\n"
-        << "  C,c                          Toggle dense graph\n"
         << "  G,g                          Generate random seeds\n"
         << "  N,n                          Move seeds randomly\n"
         << "  R,r                          Relax seeds once\n"
@@ -490,16 +576,6 @@ int main(int argc, char* argv[]) {
                 [&](bool value) { return viewer.core().set(option, value); }
             );
         };
-        typedef void (*graphTypeSetter)(igl::opengl::ViewerData&, bool);
-        auto makeCheckboxGraphType = [&](const char* label, bool& option, graphTypeSetter setter) {
-            return ImGui::Checkbox(label,
-                [&]() { return option; },
-                [&](bool value) {
-                    viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
-                    return setter(viewer.data(), value);
-                }
-            );
-        };
 
         // Draw options
         if (ImGui::CollapsingHeader("Draw Options", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -523,8 +599,9 @@ int main(int argc, char* argv[]) {
         // Graph
         if (ImGui::CollapsingHeader("Graph", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
+            int dummySeedsCount = partitioner.getSeeds().size();
             if (ImGui::DragInt("Seeds count", &(dummySeedsCount), 1.0f, 1, partitioner.getNodesCount() / 2)) {
-                dummySeedsCount = partitioner.setSeedsCount(dummySeedsCount);
+                partitioner.setSeedsCount(dummySeedsCount);
                 runPartitioner(viewer.data());
             }
             ImGui::PopItemWidth();
@@ -541,8 +618,11 @@ int main(int argc, char* argv[]) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 moveSeedsRandomly(viewer.data());
             }
-            makeCheckboxGraphType("Face-based", viewer.data().face_based, &setGraphType);
-            makeCheckboxGraphType("Dense", denseGraph, &setGraphDensity);
+            int targetType = (int)graphType;
+            ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.55f);
+            if (ImGui::Combo("Graph type", &targetType, "Vertex\0Vertex Dense\0Triangle\0Triangle Dense\0Mixed\0\0"))
+                setGraphType(viewer.data(), (GraphType)targetType);
+            ImGui::PopItemWidth();
         }
 
         // Partitioning
@@ -556,7 +636,7 @@ int main(int argc, char* argv[]) {
                 relaxPartitionerOnce(viewer.data());
             }
             ImGui::Checkbox("Relax seeds over time", &viewer.core().is_animating);
-            ImGui::Combo("Greedy relaxation", (int*)(&partitioner.greedyRelaxationType), "Disabled\0Enabled\0Optimized\0\0");
+            ImGui::Combo("Greedy relaxation", (int*)(&partitioner.greedyRelaxationType), "Disabled\0Enabled\0Extended\0\0");
             ImGui::Checkbox("Optimize precise relaxation", &partitioner.optimizePreciseRelaxation);
             ImGui::Checkbox("Optimize Dijkstra", &partitioner.optimizeDijkstra);
             ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);

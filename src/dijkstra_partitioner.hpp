@@ -263,7 +263,7 @@ private:
 				if (nodes[s].regionId != nodes[e.target].regionId) continue;
 
 				float newCost = nodes[e.target].subtreeCost * nodes[e.target].subtreeWeight;
-				if (greedyRelaxationType == GreedyOption::OPTIMIZED) {
+				if (greedyRelaxationType == GreedyOption::EXTENDED) {
 					for (Edge n : nodes[e.target].edges) {
 						if (nodes[n.target].parentId != s) continue;
 						newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
@@ -305,7 +305,7 @@ private:
 					minSeed = e.target;
 				} else if (minSeed == s) { // If a candidate's been already found with the precise heuristics, don't bother falling back to the greedy one.
 					float newCost = nodes[e.target].subtreeCost * nodes[e.target].subtreeWeight;
-					if (greedyRelaxationType == GreedyOption::OPTIMIZED) {
+					if (greedyRelaxationType == GreedyOption::EXTENDED) {
 						for (Edge n : nodes[e.target].edges) {
 							if (nodes[n.target].parentId != s) continue;
 							newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
@@ -371,10 +371,10 @@ public:
 	enum GreedyOption {
 		DISABLED,
 		ENABLED,
-		OPTIMIZED,
+		EXTENDED,
 	};
 
-	GreedyOption greedyRelaxationType = GreedyOption::OPTIMIZED;
+	GreedyOption greedyRelaxationType = GreedyOption::EXTENDED;
 	bool optimizePreciseRelaxation = true;
 	bool optimizeDijkstra = true;
 

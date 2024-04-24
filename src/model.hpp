@@ -132,6 +132,23 @@ public:
         }
     }
 
+    float triangleArea(int id) {
+        assert(id < F.rows());
+        int i = F(id, 0), j = F(id, 1), k = F(id, 2);
+        glm::vec3 vi = glm::vec3(V(i, 0), V(i, 1), V(i, 2));
+        glm::vec3 vj = glm::vec3(V(j, 0), V(j, 1), V(j, 2));
+        glm::vec3 vk = glm::vec3(V(k, 0), V(k, 1), V(k, 2));
+        return 0.5f * glm::length(glm::cross((vj - vi), (vk - vi)));
+    }
+
+    void triangleAreas(std::vector<float>& areas) {
+        areas.clear();
+        areas.resize(F.rows());
+        for (int t = 0; t < F.rows(); t++) {
+            areas[t] = triangleArea(t);
+        }
+    }
+
     void triangleAdjacency(std::vector<std::vector<int>>& adjacency, std::vector<std::vector<float>>& distances) {
         adjacency.clear();
         adjacency.resize(F.rows());
@@ -186,22 +203,67 @@ public:
         }
     }
 
+    void vertexAndTriangleAreas(std::vector<float>& areas) {
+        vertexSurroundingAreas(areas);
+        std::vector<float> trAreas;
+        triangleAreas(trAreas);
+        areas.insert(areas.end(), trAreas.begin(), trAreas.end());
+        assert(areas.size() == F.rows() + V.rows());
+    }
+
+    void mixedAdjacency(std::vector<std::vector<int>>& adjacency, std::vector<std::vector<float>>& distances) {
+        vertexAdjacency(adjacency, distances);
+        std::vector<std::vector<int>> trAdjacency;
+        std::vector<std::vector<float>> trDistances;
+        triangleAdjacency(trAdjacency, trDistances);
+        adjacency.insert(adjacency.end(), trAdjacency.begin(), trAdjacency.end());
+        distances.insert(distances.end(), trDistances.begin(), trDistances.end());
+
+        for (int t = 0; t < F.rows(); t++)
+            for (int& adj : adjacency[t + V.rows()])
+                adj += V.rows();
+
+        glm::vec3 tBarycenter;
+        for (int t = 0; t < F.rows(); t++) {
+            triangleBarycenter(t, tBarycenter);
+            for (int v = 0; v < 3; v++) {
+                int vId = F(t, v);
+                adjacency[t + V.rows()].push_back(vId);
+                adjacency[vId].push_back(t + V.rows());
+                glm::vec3 vPoint = glm::vec3(V(vId, 0), V(vId, 1), V(vId, 2));
+                float w = glm::length(vPoint - tBarycenter);
+                distances[t + V.rows()].push_back(w);
+                distances[vId].push_back(w);
+            }
+        }
+        assert(adjacency.size() == F.rows() + V.rows() && distances.size() == F.rows() + V.rows());
+    }
+
+    int firstVertexFromTriangle(int triangleId) {
+        // Is this even useful?
+        assert(triangleId < F.rows());
+        return F(triangleId, 0);
+    }
+
     void firstVerticesFromTriangles(const std::vector<int>& triangleIds, std::vector<int>& vertexIds) {
         // NB: there may be duplicate vertices in vertexIds
         vertexIds.clear();
         for (int t : triangleIds)
-            vertexIds.push_back(F(t, 0));
+            vertexIds.push_back(firstVertexFromTriangle(t));
         assert(vertexIds.size() == triangleIds.size());
+    }
+
+    int triangleFromVertex(int vertexId) {
+        for (int i = 0; i < F.size(); i++)
+            if (F(i) == vertexId)
+                return i % F.rows(); // F is column major.
+        return -1;
     }
 
     void trianglesFromVertices(const std::vector<int>& vertexIds, std::vector<int>& triangleIds) {
         triangleIds.clear();
         for (int v : vertexIds)
-            for (int i = 0; i < F.size(); i++)
-                if (F(i) == v) {
-                    triangleIds.push_back(i % F.rows()); // F is column major.
-                    break;
-                }
+            triangleIds.push_back(triangleFromVertex(v));
         assert(vertexIds.size() == triangleIds.size());
     }
 
@@ -224,23 +286,6 @@ public:
             positions[v] = glm::vec3(V(v, 0), V(v, 1), V(v, 2));
     }
 
-    float triangleArea(int id) {
-        assert(id < F.rows());
-        int i = F(id, 0), j = F(id, 1), k = F(id, 2);
-        glm::vec3 vi = glm::vec3(V(i, 0), V(i, 1), V(i, 2));
-        glm::vec3 vj = glm::vec3(V(j, 0), V(j, 1), V(j, 2));
-        glm::vec3 vk = glm::vec3(V(k, 0), V(k, 1), V(k, 2));
-        return 0.5f * glm::length(glm::cross((vj - vi), (vk - vi)));
-    }
-
-    void triangleAreas(std::vector<float>& areas) {
-        areas.clear();
-        areas.resize(F.rows());
-        for (int t = 0; t < F.rows(); t++) {
-            areas[t] = triangleArea(t);
-        }
-    }
-
     void triangleBarycenter(int id, glm::vec3& barycenter) {
         assert(id < F.rows());
         barycenter = glm::vec3(0.0f);
@@ -257,6 +302,14 @@ public:
                 barycenters[t] += glm::vec3(V(F(t, i), 0), V(F(t, i), 1), V(F(t, i), 2));
             barycenters[t] /= 3;
         }
+    }
+
+    void verticesAndTrianglesPositions(std::vector<glm::vec3>& positions) {
+        verticesPositions(positions);
+        std::vector<glm::vec3> trPositions;
+        triangleBarycenters(trPositions);
+        positions.insert(positions.end(), trPositions.begin(), trPositions.end());
+        assert(positions.size() == F.rows() + V.rows());
     }
 
     const Eigen::MatrixXd& getVerticesMatrix() const {
