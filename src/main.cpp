@@ -258,35 +258,23 @@ void relaxPartitionerOnce(igl::opengl::ViewerData& data) {
     plotDataOnScreen(data);
 }
 
-// TODO: Refactor this mess...
-void setGraphType(igl::opengl::ViewerData& data, GraphType targetType) {
-    if (targetType == graphType) return;
-
-    std::vector<int> newSeeds;
-    std::vector<float> weights;
-    std::vector<std::vector<int>> adjacency;
-    std::vector<std::vector<float>> costs;
-    data.set_face_based(isTriangleBased(targetType));
+// Returns true if seeds have been converted.
+bool convertSeeds(GraphType targetType, std::vector<int>& newSeeds) {
     if (isTriangleBased(targetType) && isVertexBased(graphType)) {
         model.trianglesFromVertices(partitioner.getSeeds(), newSeeds);
-        model.triangleAreas(weights);
-        if (isDense(targetType)) model.denseTriangleAdjacency(adjacency, costs);
-        else model.triangleAdjacency(adjacency, costs);
+        return true;
     }
     else if (isVertexBased(targetType) && isTriangleBased(graphType)) {
         model.firstVerticesFromTriangles(partitioner.getSeeds(), newSeeds);
-        model.vertexSurroundingAreas(weights);
-        if (isDense(targetType)) model.denseVertexAdjacency(adjacency, costs);
-        else model.vertexAdjacency(adjacency, costs);
+        return true;
     }
-    else if (isMixed(targetType)) { 
+    else if (isMixed(targetType)) {
         newSeeds = partitioner.getSeeds();
         if (isTriangleBased(graphType)) {
             for (int& s : newSeeds)
                 s += model.getVerticesMatrix().rows();
         }
-        model.vertexAndTriangleAreas(weights);
-        model.mixedAdjacency(adjacency, costs);
+        return true;
     }
     else if (isMixed(graphType)) {
         newSeeds = partitioner.getSeeds();
@@ -294,37 +282,48 @@ void setGraphType(igl::opengl::ViewerData& data, GraphType targetType) {
             if (isTriangleBased(targetType)) {
                 if (s >= model.getVerticesMatrix().rows()) {
                     s -= model.getVerticesMatrix().rows();
-                } else s = model.triangleFromVertex(s);
+                }
+                else s = model.triangleFromVertex(s);
             }
             else if (s >= model.getVerticesMatrix().rows()) {
                 s = model.firstVertexFromTriangle(s - model.getVerticesMatrix().rows());
             }
         }
-        if (isTriangleBased(targetType)) {
-            model.triangleAreas(weights);
-            if (isDense(targetType)) model.denseTriangleAdjacency(adjacency, costs);
-            else model.triangleAdjacency(adjacency, costs);
-        }
-        else {
-            model.vertexSurroundingAreas(weights);
-            if (isDense(targetType)) model.denseVertexAdjacency(adjacency, costs);
-            else model.vertexAdjacency(adjacency, costs);
-        }
+        return true;
     }
-    else if ((isDense(targetType) || isDense(graphType))) {
-        newSeeds = partitioner.getSeeds();
-        if (isTriangleBased(targetType)) {
-            model.triangleAreas(weights);
-            if (isDense(targetType)) model.denseTriangleAdjacency(adjacency, costs);
-            else model.triangleAdjacency(adjacency, costs);
-        } else {
-            model.vertexSurroundingAreas(weights);
-            if (isDense(targetType)) model.denseVertexAdjacency(adjacency, costs);
-            else model.vertexAdjacency(adjacency, costs);
-        }
+
+    return false;
+}
+
+void setGraphMetrics(GraphType targetType, std::vector<float>& weights, std::vector<std::vector<int>>& adjacency, std::vector<std::vector<float>>& costs) {
+    if (isTriangleBased(targetType)) {
+        model.triangleAreas(weights);
+        if (isDense(targetType)) model.denseTriangleAdjacency(adjacency, costs);
+        else model.triangleAdjacency(adjacency, costs);
+    } else if (isVertexBased(targetType)) {
+        model.vertexSurroundingAreas(weights);
+        if (isDense(targetType)) model.denseVertexAdjacency(adjacency, costs);
+        else model.vertexAdjacency(adjacency, costs);
+    } else {
+        model.vertexAndTriangleAreas(weights);
+        model.mixedAdjacency(adjacency, costs);
     }
+}
+
+void setGraphType(igl::opengl::ViewerData& data, GraphType targetType) {
+    if (targetType == graphType) return;
+
+    std::vector<int> newSeeds;
+    if (convertSeeds(targetType, newSeeds))
+        partitioner.setSeeds(newSeeds);
+
+    std::vector<float> weights;
+    std::vector<std::vector<int>> adjacency;
+    std::vector<std::vector<float>> costs;
+    setGraphMetrics(targetType, weights, adjacency, costs);
+
     graphType = targetType;
-    partitioner.setSeeds(newSeeds);
+    data.set_face_based(isTriangleBased(targetType));
     partitioner.generateNodes(weights, adjacency, costs);
     runPartitioner(data);
 }
