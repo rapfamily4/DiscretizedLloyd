@@ -26,6 +26,7 @@ enum GraphType {
     TRIANGLE,
     TRIANGLE_DENSE,
     MIXED,
+    GRAPH_TYPE_SIZE,
 };
 
 DijkstraPartitioner partitioner;
@@ -338,16 +339,16 @@ void runPerformanceTest(igl::opengl::ViewerData& data) {
 
     // Do all tests.
     // Forgive me, Father.
-    for (int type = 0; type < 5; type++) {
+    for (int type = 0; type < (int)GraphType::GRAPH_TYPE_SIZE; type++) {
         setGraphType(data, (GraphType)type);
         for (int greedy = 0; greedy < 3; greedy++)
             for (int precise = 0; precise < 2; precise++)
                 for (int dijkstra = 0; dijkstra < 2; dijkstra++) {
-                    partitioner.restoreSeeds();
                     partitioner.greedyRelaxationType = (DijkstraPartitioner::GreedyOption)greedy;
                     partitioner.optimizePreciseRelaxation = (bool)precise;
                     partitioner.optimizeDijkstra = (bool)dijkstra;
                     relaxPartitioner(data, false);
+                    partitioner.restoreSeeds();
                 }
     }
     plotDataOnScreen(data);
