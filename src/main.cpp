@@ -416,22 +416,22 @@ bool mouseDownCallback(igl::opengl::glfw::Viewer& viewer, int button, int modifi
         switch (modifier) {
             case IGL_MOD_CONTROL:
                 if (isTriangleBased(graphType) && partitioner.addSeed(pickedTriangle) ||
-                    partitioner.addSeed(pickedVertex) || // Mixed graph gives priority to vertices over triangles.
-                    partitioner.addSeed(pickedTriangleMixed)) {
+                    (isVertexBased(graphType) || isMixed(graphType)) && partitioner.addSeed(pickedVertex) ||
+                    isMixed(graphType) && partitioner.addSeed(pickedTriangleMixed)) {
                     runPartitioner(viewer.data());
                 }
                 return true;
             case IGL_MOD_CONTROL | IGL_MOD_SHIFT:
                 if (isTriangleBased(graphType) && partitioner.removeSeedOfNode(pickedTriangle) ||
-                    partitioner.removeSeedOfNode(pickedVertex) || // Mixed graph gives priority to vertices over triangles.
-                    partitioner.removeSeedOfNode(pickedTriangleMixed)) {
+                    (isVertexBased(graphType) || isMixed(graphType)) && partitioner.removeSeedOfNode(pickedVertex) ||
+                    isMixed(graphType) && partitioner.removeSeedOfNode(pickedTriangleMixed)) {
                     runPartitioner(viewer.data());
                 }
                 return true;
             case IGL_MOD_ALT:
                 if (isTriangleBased(graphType) && partitioner.moveSeedToNode(pickedTriangle) ||
-                    partitioner.moveSeedToNode(pickedVertex) || // Mixed graph gives priority to vertices over triangles.
-                    partitioner.moveSeedToNode(pickedTriangleMixed)) {
+                    (isVertexBased(graphType) || isMixed(graphType)) && partitioner.moveSeedToNode(pickedVertex) ||
+                    isMixed(graphType) && partitioner.moveSeedToNode(pickedTriangleMixed)) {
                     isDraggingRegion = true;
                     runPartitioner(viewer.data());
                 }
@@ -454,8 +454,8 @@ bool mouseMoveCallback(igl::opengl::glfw::Viewer& viewer, int x, int y) {
         int pickedVertex = model.vertexFromBarycentricCoords(pickedTriangle, barycentricCoords);
         int pickedTriangleMixed = pickedTriangle + model.getVerticesMatrix().rows();
         if (isTriangleBased(graphType) && partitioner.moveSeedToNode(pickedTriangle) ||
-            partitioner.moveSeedToNode(pickedVertex) || // Mixed graph gives priority to vertices over triangles.
-            partitioner.moveSeedToNode(pickedTriangleMixed))
+            (isVertexBased(graphType) || isMixed(graphType)) && partitioner.moveSeedToNode(pickedVertex) ||
+            isMixed(graphType) && partitioner.moveSeedToNode(pickedTriangleMixed))
             runPartitioner(viewer.data());
         return true;
     }
@@ -488,9 +488,10 @@ int main(int argc, char* argv[]) {
     // Load mesh from file.
     std::string modelPath = argc > 1 ? std::string(argv[1]) : "./models/plane.obj";
     if (!viewer.load_mesh_from_file(modelPath)) return -1;
-    model = Model(viewer.data().V, viewer.data().F);
+    model = Model(viewer.data().V, viewer.data().F, viewer.data().V_normals);
 
     // Dijkstra partitioner.
+    model.fillTangentSpaceFlat(glm::vec3(2, 0, 0), glm::vec3(0, 1, 0)); // TODO: erase this line later
     initPartitioner();
 
     // Import ImGui plugin.
@@ -520,7 +521,7 @@ int main(int argc, char* argv[]) {
             float p = ImGui::GetStyle().FramePadding.x;
             if (ImGui::Button("Load##Mesh", ImVec2((w - p) / 2.f, 0))) {
                 viewer.open_dialog_load_mesh();
-                model = Model(viewer.data().V, viewer.data().F);
+                model = Model(viewer.data().V, viewer.data().F, viewer.data().V_normals);
                 while (viewer.selected_data_index != 0)
                     viewer.erase_mesh(0);
                 viewerSetup(viewer);
@@ -576,7 +577,6 @@ int main(int argc, char* argv[]) {
                 [&](bool value) { return viewer.core().set(option, value); }
             );
         };
-
         // Draw options
         if (ImGui::CollapsingHeader("Draw Options", ImGuiTreeNodeFlags_DefaultOpen)) {
             makeCheckboxWithOptionId("Fill faces", viewer.data().show_faces);

@@ -15,10 +15,9 @@ private:
     struct HalfEdge {
         int i;
         int j;
-        float length;
-        HalfEdge() : i{ -1 }, j{ -1 }, length{ 0.0f } {}
-        HalfEdge(int i, int j, float length) : i{ i }, j{ j }, length{ length } { }
-        HalfEdge flip() const { return HalfEdge(j, i, length); }
+        HalfEdge() : i{ -1 }, j{ -1 } {}
+        HalfEdge(int i, int j) : i{ i }, j{ j } { }
+        HalfEdge flip() const { return HalfEdge(j, i); }
         bool operator<(const HalfEdge& other) const {
             if (i < other.i) return true;
             if (i > other.i) return false;
@@ -28,13 +27,10 @@ private:
 
     Eigen::MatrixXd V;
     Eigen::MatrixXi F;
+    Eigen::MatrixXd N;
+    Eigen::MatrixXd T;
+    Eigen::MatrixXd B;
 
-    float edgeLength(int i, int j) {
-        assert(i < V.rows() && j < V.rows());
-        glm::vec3 vi = glm::vec3(V(i, 0), V(i, 1), V(i, 2));
-        glm::vec3 vj = glm::vec3(V(j, 0), V(j, 1), V(j, 2));
-        return glm::distance(vi, vj);
-    }
 
     void vertexTriangleAdjacency(std::vector<std::vector<int>>& VT) {
         VT.clear();
@@ -44,7 +40,49 @@ private:
                 VT[F(t, v)].push_back(t);
     }
 
-    float oppositeVerticesDistance(glm::vec3 vertexDelta, HalfEdge trianglesBase) {
+    void tangentVectorsFromVertices(int i, int j, glm::vec3& tangent, glm::vec3& bitangent) {
+        tangent = glm::vec3(
+            (T(i, 0) + T(j, 0)) * 0.5f,
+            (T(i, 1) + T(j, 1)) * 0.5f,
+            (T(i, 2) + T(j, 2)) * 0.5f
+        );
+        bitangent = glm::vec3(
+            (B(i, 0) + B(j, 0)) * 0.5f,
+            (B(i, 1) + B(j, 1)) * 0.5f,
+            (B(i, 2) + B(j, 2)) * 0.5f
+        );
+    }
+
+    void tangentVectorsFromTriangle(int t, glm::vec3& tangent, glm::vec3& bitangent) {
+        int i = F(t, 0), j = F(t, 1), k = F(t, 2);
+        tangent = glm::vec3(
+            (T(i, 0) + T(j, 0) + T(k, 0)) / 3.0f,
+            (T(i, 1) + T(j, 1) + T(k, 1)) / 3.0f,
+            (T(i, 2) + T(j, 2) + T(k, 2)) / 3.0f
+        );
+        bitangent = glm::vec3(
+            (B(i, 0) + B(j, 0) + B(k, 0)) / 3.0f,
+            (B(i, 1) + B(j, 1) + B(k, 1)) / 3.0f,
+            (B(i, 2) + B(j, 2) + B(k, 2)) / 3.0f
+        );
+    }
+
+    float verticesDistance(int i, int j) {
+        assert(i < V.rows() && j < V.rows());
+        
+        glm::vec3 vertex = glm::vec3(V(i, 0), V(i, 1), V(i, 2));
+        glm::vec3 neighbor = glm::vec3(V(j, 0), V(j, 1), V(j, 2));
+        if (T.rows() != 0 && B.rows() != 0) {
+            glm::vec3 tangent, bitangent;
+            tangentVectorsFromVertices(i, j, tangent, bitangent);
+            float tDot = glm::dot(tangent, neighbor - vertex);
+            float bDot = glm::dot(bitangent, neighbor - vertex);
+            return std::sqrt(tDot * tDot + bDot * bDot);
+        }
+        else return glm::distance(vertex, neighbor);
+    }
+
+    float oppositePointsDistance(glm::vec3 vertexDelta, HalfEdge trianglesBase) {
         glm::vec3 base = glm::vec3(
             V(trianglesBase.i, 0) - V(trianglesBase.j, 0),
             V(trianglesBase.i, 1) - V(trianglesBase.j, 1),
@@ -57,20 +95,88 @@ private:
         return std::sqrt((sqrDoubleArea + sqrDot) / sqrBaseLength);
     }
 
-    float oppositeVerticesDistance(int vertexId0, int vertexId1, HalfEdge trianglesBase) {
+    float oppositeVerticesDistance(int i, int j, HalfEdge trianglesBase) {
         glm::vec3 delta = glm::vec3(
-            V(vertexId0, 0) - V(vertexId1, 0),
-            V(vertexId0, 1) - V(vertexId1, 1),
-            V(vertexId0, 2) - V(vertexId1, 2)
+            V(i, 0) - V(j, 0),
+            V(i, 1) - V(j, 1),
+            V(i, 2) - V(j, 2)
         );
-        return oppositeVerticesDistance(delta, trianglesBase);
+        float dist = oppositePointsDistance(delta, trianglesBase);
+        if (T.rows() != 0 && B.rows() != 0) {
+            glm::vec3 tangent, bitangent;
+            tangentVectorsFromVertices(i, j, tangent, bitangent);
+            delta = glm::normalize(-delta) * dist;
+            float tDot = glm::dot(tangent, delta);
+            float bDot = glm::dot(bitangent, delta);
+            return std::sqrt(tDot * tDot + bDot * bDot);
+        }
+        else return dist;
+    }
+
+    float trianglesDistance(int i, int j, HalfEdge trianglesBase) {
+        glm::vec3 iBarycenter, jBarycenter;
+        triangleBarycenter(i, iBarycenter);
+        triangleBarycenter(j, jBarycenter);
+        float dist = oppositePointsDistance(iBarycenter - jBarycenter, trianglesBase);
+        if (T.rows() != 0 && B.rows() != 0) {
+            glm::vec3 iTangent, jTangent, avgTangent, iBitangent, jBitangent, avgBitangent;
+            tangentVectorsFromTriangle(i, iTangent, iBitangent);
+            tangentVectorsFromTriangle(j, jTangent, jBitangent);
+            avgTangent = (iTangent + jTangent) * 0.5f;
+            avgBitangent = (iBitangent + jBitangent) * 0.5f;
+            glm::vec3 delta = glm::normalize(jBarycenter - iBarycenter) * dist;
+            float tDot = glm::dot(avgTangent, delta);
+            float bDot = glm::dot(avgBitangent, delta);
+            return std::sqrt(tDot * tDot + bDot * bDot);
+        }
+        else return dist;
+    }
+
+    float vertexTriangleDistance(int v, int t) {
+        glm::vec3 vPoint, tBarycenter;
+        vPoint = glm::vec3(V(v, 0), V(v, 1), V(v, 2));
+        triangleBarycenter(t, tBarycenter);
+        if (T.rows() != 0 && B.rows() != 0) {
+            glm::vec3 tTangent, avgTangent, tBitangent, avgBitangent;
+            tangentVectorsFromTriangle(t, tTangent, tBitangent);
+            avgTangent = glm::vec3(
+                (T(v, 0) + tTangent.x) * 0.5f,
+                (T(v, 1) + tTangent.y) * 0.5f,
+                (T(v, 2) + tTangent.z) * 0.5f
+            );
+            avgBitangent = glm::vec3(
+                (B(v, 0) + tBitangent.x) * 0.5f,
+                (B(v, 1) + tBitangent.y) * 0.5f,
+                (B(v, 2) + tBitangent.z) * 0.5f
+            );
+            glm::vec3 delta = tBarycenter - vPoint;
+            float tDot = glm::dot(avgTangent, delta);
+            float bDot = glm::dot(avgBitangent, delta);
+            return std::sqrt(tDot * tDot + bDot * bDot);
+        }
+        else return glm::length(tBarycenter - vPoint);
     }
 
 public:
     Model() {}
-    Model(Eigen::MatrixXd vertices, Eigen::MatrixXi triangles) :
+    Model(Eigen::MatrixXd vertices, Eigen::MatrixXi triangles, Eigen::MatrixXd verticesNormals) :
         V{ vertices },
-        F{ triangles } {
+        F{ triangles },
+        N{ verticesNormals } {
+    }
+
+    void clearTangentSpace() {
+        T.conservativeResize(0, 3);
+        B.conservativeResize(0, 3);
+    }
+
+    void fillTangentSpaceFlat(glm::vec3& tangent, glm::vec3& bitangent) {
+        T.resize(V.rows(), 3);
+        B.resize(V.rows(), 3);
+        for (int i = 0; i < V.rows(); i++) {
+            T.row(i) << tangent.x, tangent.y, tangent.z;
+            B.row(i) << bitangent.x, bitangent.y, bitangent.z;
+        }
     }
 
     void vertexSurroundingAreas(std::vector<float>& vertexAreas) {
@@ -91,12 +197,8 @@ public:
         distances.clear();
         for (int i = 0; i < adjacency.size(); i++) {
             distances.push_back(std::vector<float>());
-            glm::vec3 vertex = glm::vec3((float)V(i, 0), (float)V(i, 1), (float)V(i, 2));
-            for (int j = 0; j < adjacency[i].size(); j++) {
-                // i-th vertex, j-th neighbor of index adjacency[i][j].
-                int nId = adjacency[i][j];
-                glm::vec3 neighbor = glm::vec3((float)V(nId, 0), (float)V(nId, 1), (float)V(nId, 2));
-                distances[i].push_back(glm::distance(vertex, neighbor));
+            for (int n : adjacency[i]) {
+                distances[i].push_back(verticesDistance(i, n));
             }
         }
     }
@@ -108,7 +210,7 @@ public:
             for (int v = 0; v < F.cols(); v++) { // v-th vertex of the triangle.
                 int i = F(t, v), j = F(t, (v + 1) % F.cols());
                 int oppositeVert0 = F(t, (v + 2) % F.cols());
-                HalfEdge edge(i, j, edgeLength(i, j));
+                HalfEdge edge(i, j);
                 HalfEdge flipped = edge.flip();
 
                 if (edges.find(flipped) != edges.end()) {
@@ -154,26 +256,21 @@ public:
         adjacency.resize(F.rows());
         distances.clear();
         distances.resize(F.rows());
-        glm::vec3 tBarycenter;
-        glm::vec3 nBarycenter;
         std::map<HalfEdge, int> edges;
 
         for (int t = 0; t < F.rows(); t++) { // t-th triangle.
-            triangleBarycenter(t, tBarycenter);
             for (int v = 0; v < F.cols(); v++) { // v-th vertex of the triangle.
                 int i = F(t, v), j = F(t, (v + 1) % F.cols());
-                HalfEdge edge(i, j, edgeLength(i, j));
+                HalfEdge edge(i, j);
                 HalfEdge flipped = edge.flip();
                 if (edges.find(flipped) != edges.end()) {
                     int n = edges[flipped];
                     assert(t != n);
                     adjacency[t].push_back(n);
                     adjacency[n].push_back(t);
-                    //float w = (triangleArea(t) + triangleArea(n)) / edge.length;
-                    triangleBarycenter(n, nBarycenter);
-                    float w = oppositeVerticesDistance(tBarycenter - nBarycenter, edge);
-                    distances[t].push_back(w);
-                    distances[n].push_back(w);
+                    float dist = trianglesDistance(t, n, edge);
+                    distances[t].push_back(dist);
+                    distances[n].push_back(dist);
                 }
                 else edges[edge] = t;
             }
@@ -184,20 +281,14 @@ public:
         triangleAdjacency(adjacency, distances);
         std::vector<std::vector<int>> VT;
         vertexTriangleAdjacency(VT);
-        glm::vec3 tBarycenter;
-        glm::vec3 nBarycenter;
-
         for (int t = 0; t < F.rows(); t++) { // t-th triangle.
-            triangleBarycenter(t, tBarycenter);
             for (int v = 0; v < F.cols(); v++) { // v-th vertex of the triangle.
                 int vId = F(t, v);
-                glm::vec3 vPoint = glm::vec3(V(vId, 0), V(vId, 1), V(vId, 2));
                 for (int n : VT[vId]) // Triangle n, neighbor of vertex vId.
                     if (n != t && std::find(adjacency[t].begin(), adjacency[t].end(), n) == adjacency[t].end()) {
                         adjacency[t].push_back(n);
-                        triangleBarycenter(n, nBarycenter);
-                        float w = glm::length(vPoint - tBarycenter) + glm::length(vPoint - nBarycenter);
-                        distances[t].push_back(w);
+                        float dist = vertexTriangleDistance(vId, t) + vertexTriangleDistance(vId, n);
+                        distances[t].push_back(dist);
                     }
             }
         }
@@ -223,17 +314,14 @@ public:
             for (int& adj : adjacency[t + V.rows()])
                 adj += V.rows();
 
-        glm::vec3 tBarycenter;
         for (int t = 0; t < F.rows(); t++) {
-            triangleBarycenter(t, tBarycenter);
             for (int v = 0; v < 3; v++) {
                 int vId = F(t, v);
                 adjacency[t + V.rows()].push_back(vId);
                 adjacency[vId].push_back(t + V.rows());
-                glm::vec3 vPoint = glm::vec3(V(vId, 0), V(vId, 1), V(vId, 2));
-                float w = glm::length(vPoint - tBarycenter);
-                distances[t + V.rows()].push_back(w);
-                distances[vId].push_back(w);
+                float dist = vertexTriangleDistance(vId, t);
+                distances[t + V.rows()].push_back(dist);
+                distances[vId].push_back(dist);
             }
         }
         assert(adjacency.size() == F.rows() + V.rows() && distances.size() == F.rows() + V.rows());
