@@ -275,7 +275,7 @@ private:
 					candidate = e.target;
 				}
 			}
-			if (candidate != s && !nodes[candidate].wasSeed()) {
+			if (candidate != s && (!nodes[candidate].wasSeed())) {
 				nodes[s].inSeedConfiguration = false;
 				s = candidate;
 				nodes[s].inSeedConfiguration = true;

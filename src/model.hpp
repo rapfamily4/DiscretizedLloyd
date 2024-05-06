@@ -367,6 +367,12 @@ public:
         return result;
     }
 
+    void vertexPosition(int id, glm::vec3& position) {
+        position.x = V(id, 0);
+        position.y = V(id, 1);
+        position.z = V(id, 2);
+    }
+
     void verticesPositions(std::vector<glm::vec3>& positions) {
         positions.clear();
         positions.resize(V.rows());
@@ -382,7 +388,7 @@ public:
         barycenter /= 3;
     }
 
-    void triangleBarycenters(std::vector<glm::vec3>& barycenters) {
+    void trianglesBarycenters(std::vector<glm::vec3>& barycenters) {
         barycenters.clear();
         barycenters.resize(F.rows(), glm::vec3(0.0f));
         for (int t = 0; t < F.rows(); t++) {
@@ -395,7 +401,7 @@ public:
     void verticesAndTrianglesPositions(std::vector<glm::vec3>& positions) {
         verticesPositions(positions);
         std::vector<glm::vec3> trPositions;
-        triangleBarycenters(trPositions);
+        trianglesBarycenters(trPositions);
         positions.insert(positions.end(), trPositions.begin(), trPositions.end());
         assert(positions.size() == F.rows() + V.rows());
     }

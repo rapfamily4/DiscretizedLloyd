@@ -34,6 +34,7 @@ Model model;
 Stopwatch swatch;
 GraphType graphType;
 bool showGroundTruth = false;
+bool showDelaunay = false;
 bool isDraggingRegion = false;
 
 
@@ -99,7 +100,7 @@ void groundTruth(std::vector<int>& regionAssignments, Eigen::MatrixXd& barycente
     std::vector<glm::vec3> nodePos;
     std::vector<float> nodeArea;
     if (graphType == GraphType::TRIANGLE || graphType == GraphType::TRIANGLE_DENSE) {
-        model.triangleBarycenters(nodePos);
+        model.trianglesBarycenters(nodePos);
         model.triangleAreas(nodeArea);
     } else { // Ground truth for mixed graph is vertex based.
         model.verticesPositions(nodePos);
@@ -131,6 +132,40 @@ void groundTruth(std::vector<int>& regionAssignments, Eigen::MatrixXd& barycente
         barycenters.row(region) /= regionCount[region];
 }
 
+void pseudoDelaunay(igl::opengl::ViewerData& data, const std::vector<int>& regionAssignments) {
+    std::vector<glm::vec3> seedPoints;
+    const Eigen::MatrixXd& V = model.getVerticesMatrix();
+    const Eigen::MatrixXi& F = model.getFacesMatrix();
+    for (int seed : partitioner.getSeeds()) {
+        glm::vec3 point;
+        if (isTriangleBased(graphType))
+            model.triangleBarycenter(seed, point);
+        else if (isMixed(graphType) && seed >= V.rows())
+            model.triangleBarycenter(seed - V.rows(), point);
+        else
+            model.vertexPosition(seed, point);
+        
+        seedPoints.push_back(point);
+    }
+
+    for (int node = 0; node < partitioner.getNodesCount(); node++) {
+        int region = regionAssignments[node];
+
+        if (isTriangleBased(graphType)) {
+            for (int v = 0; v < F.cols(); v++)
+                data.V.row(F(node, v)) << seedPoints[region].x, seedPoints[region].y, seedPoints[region].z;
+        }
+        else if (isMixed(graphType) && node >= model.getVerticesMatrix().rows()) {
+            for (int v = 0; v < F.cols(); v++)
+                data.V.row(F(node - V.rows(), v)) << seedPoints[region].x, seedPoints[region].y, seedPoints[region].z;
+        }
+        else
+            data.V.row(node) << seedPoints[region].x, seedPoints[region].y, seedPoints[region].z;
+    }
+    data.dirty |= igl::opengl::MeshGL::DIRTY_POSITION;
+    data.compute_normals();
+}
+
 void regionColors(int regionsNumber, std::vector<glm::vec3>& colors) {
     colors.clear();
     colors.resize(regionsNumber);
@@ -156,7 +191,7 @@ void assignColorsToModel(igl::opengl::ViewerData& data, const std::vector<int>& 
 void plotTrees(igl::opengl::ViewerData& data) {
     std::vector<glm::vec3> nodePos;
     if (isTriangleBased(graphType))
-        model.triangleBarycenters(nodePos);
+        model.trianglesBarycenters(nodePos);
     else if (isVertexBased(graphType))
         model.verticesPositions(nodePos);
     else model.verticesAndTrianglesPositions(nodePos);
@@ -189,10 +224,12 @@ void plotDataOnScreen(igl::opengl::ViewerData& data) {
         Eigen::MatrixXd barycenters = Eigen::MatrixXd::Zero(partitioner.getSeeds().size(), 3);
         groundTruth(regionAssignments, barycenters);
         data.add_points(barycenters, Eigen::RowVector3d(0, 0, 0));
-    } else {
-        plotTrees(data);
+    } else
         partitioner.nodewiseRegionAssignments(regionAssignments);
-    }
+    if (showDelaunay)
+        pseudoDelaunay(data, regionAssignments);
+    if (!showGroundTruth && !showDelaunay)
+        plotTrees(data);
     assignColorsToModel(data, regionAssignments);
 }
 
@@ -491,7 +528,7 @@ int main(int argc, char* argv[]) {
     model = Model(viewer.data().V, viewer.data().F, viewer.data().V_normals);
 
     // Dijkstra partitioner.
-    model.fillTangentSpaceFlat(glm::vec3(2, 0, 0), glm::vec3(0, 1, 0)); // TODO: erase this line later
+    //model.fillTangentSpaceFlat(glm::vec3(2, 0, 0), glm::vec3(0, 1, 0)); // TODO: erase this line later
     initPartitioner();
 
     // Import ImGui plugin.
@@ -521,12 +558,14 @@ int main(int argc, char* argv[]) {
             float p = ImGui::GetStyle().FramePadding.x;
             if (ImGui::Button("Load##Mesh", ImVec2((w - p) / 2.f, 0))) {
                 viewer.open_dialog_load_mesh();
-                model = Model(viewer.data().V, viewer.data().F, viewer.data().V_normals);
-                while (viewer.selected_data_index != 0)
-                    viewer.erase_mesh(0);
-                viewerSetup(viewer);
-                initPartitioner();
-                runPartitioner(viewer.data());
+                if (viewer.data_list.size() > 1) {
+                    model = Model(viewer.data().V, viewer.data().F, viewer.data().V_normals);
+                    while (viewer.selected_data_index != 0)
+                        viewer.erase_mesh(0);
+                    viewerSetup(viewer);
+                    initPartitioner();
+                    runPartitioner(viewer.data());
+                }
             }
             ImGui::SameLine(0, p);
             if (ImGui::Button("Save##Mesh", ImVec2((w - p) / 2.f, 0)))
@@ -648,7 +687,15 @@ int main(int argc, char* argv[]) {
         if (ImGui::CollapsingHeader("Tests", ImGuiTreeNodeFlags_DefaultOpen)) {
             if (ImGui::Button("Run Performance Test", ImVec2(-1, 0)))
                 runPerformanceTest(viewer.data());
-            if (ImGui::Checkbox("Show ground truth", &showGroundTruth)) {
+            if (ImGui::Checkbox("Ground truth", &showGroundTruth)) {
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+                plotDataOnScreen(viewer.data());
+            }
+            if (ImGui::Checkbox("Delaunay triangulation", &showDelaunay)) {
+                if (!showDelaunay) {
+                    viewer.data().set_vertices(model.getVerticesMatrix());
+                    viewer.data().compute_normals();
+                }
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 plotDataOnScreen(viewer.data());
             }
