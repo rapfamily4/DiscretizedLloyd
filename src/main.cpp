@@ -33,8 +33,8 @@ DijkstraPartitioner partitioner;
 Model model;
 Stopwatch swatch;
 GraphType graphType;
-float delaunayFactor = 0;
-glm::vec3 delaunayColor{0.7f, 0.7f, 0.7f};
+float triangulationFactor = 0;
+glm::vec3 triangulationColor{0.7f, 0.7f, 0.7f};
 bool showGroundTruth = false;
 bool isDraggingRegion = false;
 
@@ -153,7 +153,7 @@ void pseudoDelaunay(igl::opengl::ViewerData& data, const std::vector<int>& regio
     glm::vec3 vertexPos;
     auto mixForDelaunay = [&](int vertexId, int region) {
         model.vertexPosition(vertexId, vertexPos);
-        mixed = glm::mix(vertexPos, seedPoints[region], delaunayFactor);
+        mixed = glm::mix(vertexPos, seedPoints[region], triangulationFactor);
     };
     for (int node = 0; node < partitioner.getNodesCount(); node++) {
         int region = regionAssignments[node];
@@ -193,7 +193,7 @@ void assignColorsToModel(igl::opengl::ViewerData& data, const std::vector<int>& 
     regionColors(partitioner.getSeeds().size(), regionCols);
 
     for (int node = 0; node < C.rows(); node++) {
-        glm::vec3 nodeColor = glm::mix(regionCols[regionAssignments[node]], delaunayColor, delaunayFactor);
+        glm::vec3 nodeColor = glm::mix(regionCols[regionAssignments[node]], triangulationColor, triangulationFactor);
         C.row(node) << nodeColor.x, nodeColor.y, nodeColor.z;
     }
     data.set_colors(C);
@@ -237,9 +237,9 @@ void plotDataOnScreen(igl::opengl::ViewerData& data) {
         data.add_points(barycenters, Eigen::RowVector3d(0, 0, 0));
     } else
         partitioner.nodewiseRegionAssignments(regionAssignments);
-    if (delaunayFactor > 0)
+    if (triangulationFactor > 0)
         pseudoDelaunay(data, regionAssignments);
-    if (!showGroundTruth && delaunayFactor <= 0)
+    if (!showGroundTruth && triangulationFactor <= 0)
         plotTrees(data);
     assignColorsToModel(data, regionAssignments);
 }
@@ -703,8 +703,8 @@ int main(int argc, char* argv[]) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 plotDataOnScreen(viewer.data());
             }
-            if (ImGui::SliderFloat("Delaunay triangulation", &delaunayFactor, 0.0f, 1.0f)) {
-                if (delaunayFactor <= 0) {
+            if (ImGui::SliderFloat("Triangulation preview", &triangulationFactor, 0.0f, 1.0f)) {
+                if (triangulationFactor <= 0) {
                     viewer.data().set_vertices(model.getVerticesMatrix());
                     viewer.data().compute_normals();
                     viewer.data().show_lines = false;
@@ -713,7 +713,7 @@ int main(int argc, char* argv[]) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 plotDataOnScreen(viewer.data());
             }
-            if (ImGui::ColorEdit3("Delaunay mesh color", glm::value_ptr(delaunayColor),
+            if (ImGui::ColorEdit3("Triangulation color", glm::value_ptr(triangulationColor),
                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel)) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 plotDataOnScreen(viewer.data());

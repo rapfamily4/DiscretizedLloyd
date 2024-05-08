@@ -40,31 +40,67 @@ private:
                 VT[F(t, v)].push_back(t);
     }
 
-    void tangentVectorsFromVertices(int i, int j, glm::vec3& tangent, glm::vec3& bitangent) {
-        tangent = glm::vec3(
-            (T(i, 0) + T(j, 0)) * 0.5f,
-            (T(i, 1) + T(j, 1)) * 0.5f,
-            (T(i, 2) + T(j, 2)) * 0.5f
-        );
-        bitangent = glm::vec3(
-            (B(i, 0) + B(j, 0)) * 0.5f,
-            (B(i, 1) + B(j, 1)) * 0.5f,
-            (B(i, 2) + B(j, 2)) * 0.5f
-        );
+    void mixTangentSpace(glm::vec3& t0, glm::vec3& b0, glm::vec3& t1, glm::vec3& b1, glm::vec3& tMixed, glm::vec3& bMixed) {
+        glm::vec3 nt0 = glm::normalize(t0);
+        glm::vec3 nb0 = glm::normalize(b0);
+        glm::vec3 nt1 = glm::normalize(t1);
+        glm::vec3 nb1 = glm::normalize(b1);
+        std::vector<float> dots(4, 0);
+        dots[0] = glm::dot(t0, t1);
+        dots[1] = glm::dot(t0, b1);
+        dots[2] = glm::dot(t0, -t1);
+        dots[3] = glm::dot(t0, -b1);
+        float dotMax = -INF;
+        int dotMaxIndex = -1;
+        for (int i = 0; i < 4; i++) {
+            if (dots[i] > dotMax) {
+                dotMax = dots[i];
+                dotMaxIndex = i;
+            }
+        }
+        float tMixedLen = (glm::length(t0) + glm::length(t1)) * 0.5f;
+        float bMixedLen = (glm::length(b0) + glm::length(b1)) * 0.5f;
+        switch (dotMaxIndex) {
+            case 0:
+                tMixed = glm::normalize((t0 + t1) * 0.5f) * tMixedLen;
+                bMixed = glm::normalize((b0 + b1) * 0.5f) * bMixedLen;
+                break;
+            case 1:
+                tMixed = glm::normalize((t0 + b1) * 0.5f) * tMixedLen;
+                bMixed = glm::normalize((b0 - t1) * 0.5f) * bMixedLen;
+                break;
+            case 2:
+                tMixed = glm::normalize((t0 - t1) * 0.5f) * tMixedLen;
+                bMixed = glm::normalize((b0 - b1) * 0.5f) * bMixedLen;
+                break;
+            case 3:
+                tMixed = glm::normalize((t0 - b1) * 0.5f) * tMixedLen;
+                bMixed = glm::normalize((b0 + t1) * 0.5f) * bMixedLen;
+                break;
+        }
     }
 
-    void tangentVectorsFromTriangle(int t, glm::vec3& tangent, glm::vec3& bitangent) {
+    void tangentSpaceFromVertex(int vertexId, glm::vec3& tangent, glm::vec3& bitangent) {
+        tangent = glm::vec3(T(vertexId, 0), T(vertexId, 1), T(vertexId, 2));
+        bitangent = glm::vec3(B(vertexId, 0), B(vertexId, 1), B(vertexId, 2));
+    }
+
+    void tangentSpaceFromVertices(int i, int j, glm::vec3& tangent, glm::vec3& bitangent) {
+        glm::vec3 ti, tj, bi, bj;
+        tangentSpaceFromVertex(i, ti, bi);
+        tangentSpaceFromVertex(j, tj, bj);
+        mixTangentSpace(ti, bi, tj, bj, tangent, bitangent);
+    }
+
+    void tangentSpaceFromTriangle(int t, glm::vec3& tangent, glm::vec3& bitangent) {
         int i = F(t, 0), j = F(t, 1), k = F(t, 2);
-        tangent = glm::vec3(
-            (T(i, 0) + T(j, 0) + T(k, 0)) / 3.0f,
-            (T(i, 1) + T(j, 1) + T(k, 1)) / 3.0f,
-            (T(i, 2) + T(j, 2) + T(k, 2)) / 3.0f
-        );
-        bitangent = glm::vec3(
-            (B(i, 0) + B(j, 0) + B(k, 0)) / 3.0f,
-            (B(i, 1) + B(j, 1) + B(k, 1)) / 3.0f,
-            (B(i, 2) + B(j, 2) + B(k, 2)) / 3.0f
-        );
+        glm::vec3 ti, tj, tk, bi, bj, bk;
+        tangentSpaceFromVertex(i, ti, bi);
+        tangentSpaceFromVertex(j, tj, bj);
+        tangentSpaceFromVertex(k, tk, bk);
+        glm::vec3 tijMixed, bijMixed;
+        mixTangentSpace(ti, bi, tj, bj, tijMixed, bijMixed);
+        mixTangentSpace(tijMixed, bijMixed, tk, bk, tangent, bitangent);
     }
 
     float verticesDistance(int i, int j) {
@@ -74,7 +110,7 @@ private:
         glm::vec3 neighbor = glm::vec3(V(j, 0), V(j, 1), V(j, 2));
         if (T.rows() != 0 && B.rows() != 0) {
             glm::vec3 tangent, bitangent;
-            tangentVectorsFromVertices(i, j, tangent, bitangent);
+            tangentSpaceFromVertices(i, j, tangent, bitangent);
             float tDot = glm::dot(tangent, neighbor - vertex);
             float bDot = glm::dot(bitangent, neighbor - vertex);
             return std::sqrt(tDot * tDot + bDot * bDot);
@@ -104,7 +140,7 @@ private:
         float dist = oppositePointsDistance(delta, trianglesBase);
         if (T.rows() != 0 && B.rows() != 0) {
             glm::vec3 tangent, bitangent;
-            tangentVectorsFromVertices(i, j, tangent, bitangent);
+            tangentSpaceFromVertices(i, j, tangent, bitangent);
             delta = glm::normalize(-delta) * dist;
             float tDot = glm::dot(tangent, delta);
             float bDot = glm::dot(bitangent, delta);
@@ -120,10 +156,9 @@ private:
         float dist = oppositePointsDistance(iBarycenter - jBarycenter, trianglesBase);
         if (T.rows() != 0 && B.rows() != 0) {
             glm::vec3 iTangent, jTangent, avgTangent, iBitangent, jBitangent, avgBitangent;
-            tangentVectorsFromTriangle(i, iTangent, iBitangent);
-            tangentVectorsFromTriangle(j, jTangent, jBitangent);
-            avgTangent = (iTangent + jTangent) * 0.5f;
-            avgBitangent = (iBitangent + jBitangent) * 0.5f;
+            tangentSpaceFromTriangle(i, iTangent, iBitangent);
+            tangentSpaceFromTriangle(j, jTangent, jBitangent);
+            mixTangentSpace(iTangent, iBitangent, jTangent, jBitangent, avgTangent, avgBitangent);
             glm::vec3 delta = glm::normalize(jBarycenter - iBarycenter) * dist;
             float tDot = glm::dot(avgTangent, delta);
             float bDot = glm::dot(avgBitangent, delta);
@@ -133,22 +168,14 @@ private:
     }
 
     float vertexTriangleDistance(int v, int t) {
-        glm::vec3 vPoint, tBarycenter;
+        glm::vec3 vPoint, vTangent, vBitangent, tBarycenter;
         vPoint = glm::vec3(V(v, 0), V(v, 1), V(v, 2));
+        tangentSpaceFromVertex(v, vTangent, vBitangent);
         triangleBarycenter(t, tBarycenter);
         if (T.rows() != 0 && B.rows() != 0) {
             glm::vec3 tTangent, avgTangent, tBitangent, avgBitangent;
-            tangentVectorsFromTriangle(t, tTangent, tBitangent);
-            avgTangent = glm::vec3(
-                (T(v, 0) + tTangent.x) * 0.5f,
-                (T(v, 1) + tTangent.y) * 0.5f,
-                (T(v, 2) + tTangent.z) * 0.5f
-            );
-            avgBitangent = glm::vec3(
-                (B(v, 0) + tBitangent.x) * 0.5f,
-                (B(v, 1) + tBitangent.y) * 0.5f,
-                (B(v, 2) + tBitangent.z) * 0.5f
-            );
+            tangentSpaceFromTriangle(t, tTangent, tBitangent);
+            mixTangentSpace(vTangent, vBitangent, tTangent, tBitangent, avgTangent, avgBitangent);
             glm::vec3 delta = tBarycenter - vPoint;
             float tDot = glm::dot(avgTangent, delta);
             float bDot = glm::dot(avgBitangent, delta);
