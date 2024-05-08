@@ -11,6 +11,7 @@
 #include <igl/unproject_onto_mesh.h>
 #include <glm/glm.hpp>
 #include <glm/gtx/color_space.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include "dijkstra_partitioner.hpp"
 #include "model.hpp"
 #include "stopwatch.hpp"
@@ -18,7 +19,6 @@
 #include "consts.hpp"
 
 #define DEFAULT_REGIONS_NUMBER 16
-
 
 enum GraphType {
     VERTEX,
@@ -33,8 +33,9 @@ DijkstraPartitioner partitioner;
 Model model;
 Stopwatch swatch;
 GraphType graphType;
+float delaunayFactor = 0;
+glm::vec3 delaunayColor{0.7f, 0.7f, 0.7f};
 bool showGroundTruth = false;
-bool showDelaunay = false;
 bool isDraggingRegion = false;
 
 
@@ -148,19 +149,29 @@ void pseudoDelaunay(igl::opengl::ViewerData& data, const std::vector<int>& regio
         seedPoints.push_back(point);
     }
 
+    glm::vec3 mixed;
+    glm::vec3 vertexPos;
+    auto mixForDelaunay = [&](int vertexId, int region) {
+        model.vertexPosition(vertexId, vertexPos);
+        mixed = glm::mix(vertexPos, seedPoints[region], delaunayFactor);
+    };
     for (int node = 0; node < partitioner.getNodesCount(); node++) {
         int region = regionAssignments[node];
 
         if (isTriangleBased(graphType)) {
-            for (int v = 0; v < F.cols(); v++)
-                data.V.row(F(node, v)) << seedPoints[region].x, seedPoints[region].y, seedPoints[region].z;
+            for (int v = 0; v < F.cols(); v++) {
+                mixForDelaunay(F(node, v), region);
+                data.V.row(F(node, v)) << mixed.x, mixed.y, mixed.z;
+            }
+        } else if (isMixed(graphType) && node >= V.rows()) {
+            for (int v = 0; v < F.cols(); v++) {
+                mixForDelaunay(F(node - V.rows(), v), region);
+                data.V.row(F(node - V.rows(), v)) << mixed.x, mixed.y, mixed.z;
+            }
+        } else {
+            mixForDelaunay(node, region);
+            data.V.row(node) << mixed.x, mixed.y, mixed.z;
         }
-        else if (isMixed(graphType) && node >= model.getVerticesMatrix().rows()) {
-            for (int v = 0; v < F.cols(); v++)
-                data.V.row(F(node - V.rows(), v)) << seedPoints[region].x, seedPoints[region].y, seedPoints[region].z;
-        }
-        else
-            data.V.row(node) << seedPoints[region].x, seedPoints[region].y, seedPoints[region].z;
     }
     data.dirty |= igl::opengl::MeshGL::DIRTY_POSITION;
     data.compute_normals();
@@ -182,7 +193,7 @@ void assignColorsToModel(igl::opengl::ViewerData& data, const std::vector<int>& 
     regionColors(partitioner.getSeeds().size(), regionCols);
 
     for (int node = 0; node < C.rows(); node++) {
-        glm::vec3 nodeColor = regionCols[regionAssignments[node]];
+        glm::vec3 nodeColor = glm::mix(regionCols[regionAssignments[node]], delaunayColor, delaunayFactor);
         C.row(node) << nodeColor.x, nodeColor.y, nodeColor.z;
     }
     data.set_colors(C);
@@ -226,9 +237,9 @@ void plotDataOnScreen(igl::opengl::ViewerData& data) {
         data.add_points(barycenters, Eigen::RowVector3d(0, 0, 0));
     } else
         partitioner.nodewiseRegionAssignments(regionAssignments);
-    if (showDelaunay)
+    if (delaunayFactor > 0)
         pseudoDelaunay(data, regionAssignments);
-    if (!showGroundTruth && !showDelaunay)
+    if (!showGroundTruth && delaunayFactor <= 0)
         plotTrees(data);
     assignColorsToModel(data, regionAssignments);
 }
@@ -620,6 +631,7 @@ int main(int argc, char* argv[]) {
         if (ImGui::CollapsingHeader("Draw Options", ImGuiTreeNodeFlags_DefaultOpen)) {
             makeCheckboxWithOptionId("Fill faces", viewer.data().show_faces);
             makeCheckboxWithOptionId("Wireframe", viewer.data().show_lines);
+            ImGui::Checkbox("Double sided lighting", &viewer.data().double_sided);
             ImGui::ColorEdit4("Wireframe color", viewer.data().line_color.data(),
                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
             ImGui::ColorEdit4("Background", viewer.core().background_color.data(),
@@ -691,11 +703,18 @@ int main(int argc, char* argv[]) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 plotDataOnScreen(viewer.data());
             }
-            if (ImGui::Checkbox("Delaunay triangulation", &showDelaunay)) {
-                if (!showDelaunay) {
+            if (ImGui::SliderFloat("Delaunay triangulation", &delaunayFactor, 0.0f, 1.0f)) {
+                if (delaunayFactor <= 0) {
                     viewer.data().set_vertices(model.getVerticesMatrix());
                     viewer.data().compute_normals();
-                }
+                    viewer.data().show_lines = false;
+                } else
+                    viewer.data().show_lines = true;
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+                plotDataOnScreen(viewer.data());
+            }
+            if (ImGui::ColorEdit3("Delaunay mesh color", glm::value_ptr(delaunayColor),
+                ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel)) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 plotDataOnScreen(viewer.data());
             }
