@@ -411,7 +411,8 @@ void runPerformanceTest(igl::opengl::ViewerData& data) {
 void viewerSetup(igl::opengl::glfw::Viewer& viewer) {
     setGraphType(viewer.data(), GraphType::VERTEX);
     viewer.data().point_size = 8.;
-    viewer.data().show_lines = false;
+    if (triangulationFactor <= 0.0f)
+        viewer.data().show_lines = false;
     viewer.core().is_animating = false;
     viewer.core().animation_max_fps = 120.;
     viewer.core().lighting_factor = 1;
