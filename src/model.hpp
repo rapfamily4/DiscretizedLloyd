@@ -168,12 +168,12 @@ private:
     }
 
     float vertexTriangleDistance(int v, int t) {
-        glm::vec3 vPoint, vTangent, vBitangent, tBarycenter;
+        glm::vec3 vPoint, tBarycenter;
         vPoint = glm::vec3(V(v, 0), V(v, 1), V(v, 2));
-        tangentSpaceFromVertex(v, vTangent, vBitangent);
         triangleBarycenter(t, tBarycenter);
         if (T.rows() != 0 && B.rows() != 0) {
-            glm::vec3 tTangent, avgTangent, tBitangent, avgBitangent;
+            glm::vec3 vTangent, vBitangent, tTangent, avgTangent, tBitangent, avgBitangent;
+            tangentSpaceFromVertex(v, vTangent, vBitangent);
             tangentSpaceFromTriangle(t, tTangent, tBitangent);
             mixTangentSpace(vTangent, vBitangent, tTangent, tBitangent, avgTangent, avgBitangent);
             glm::vec3 delta = tBarycenter - vPoint;
