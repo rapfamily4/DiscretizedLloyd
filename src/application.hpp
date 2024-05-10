@@ -5,8 +5,12 @@
 #include <map>
 #include <string>
 #include <algorithm>
+#include <cstddef>
+#include <fstream>
+#include <sstream>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <igl/file_dialog_open.h>
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/opengl/glfw/imgui/ImGuiPlugin.h>
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
@@ -426,7 +430,6 @@ private:
     }
 
     void viewerSetup(igl::opengl::glfw::Viewer& viewer) {
-        setGraphType(GraphType::VERTEX);
         viewer.data().point_size = 8.;
         if (triangulationFactor <= 0.0f)
             viewer.data().show_lines = false;
@@ -551,7 +554,7 @@ private:
         if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen)) {
             float w = ImGui::GetContentRegionAvail().x;
             float p = ImGui::GetStyle().FramePadding.x;
-            if (ImGui::Button("Load##Mesh", ImVec2((w - p) / 2.f, 0))) {
+            if (ImGui::Button("Load Mesh", ImVec2((w - p) / 2.f, 0))) {
                 viewer.open_dialog_load_mesh();
                 if (viewer.data_list.size() > 1) {
                     model = Model(viewer.data().V, viewer.data().F, viewer.data().V_normals);
@@ -563,8 +566,15 @@ private:
                 }
             }
             ImGui::SameLine(0, p);
-            if (ImGui::Button("Save##Mesh", ImVec2((w - p) / 2.f, 0)))
+            if (ImGui::Button("Save Mesh", ImVec2((w - p) / 2.f, 0)))
                 viewer.open_dialog_save_mesh();
+            if (ImGui::Button("Load .vfield", ImVec2(w - p, 0))) {
+                if (readTangentSpaceFromFile(igl::file_dialog_open())) {
+                    viewerSetup(viewer);
+                    initPartitioner();
+                    runPartitioner();
+                }
+            }
         }
 
         // Viewing options
@@ -707,6 +717,76 @@ private:
         }
     }
 
+    bool isNumberList(std::string line) {
+        return std::all_of(line.begin(), line.end(), [](char ch) {
+            return std::isdigit(ch) || std::isspace(ch) || ch == '-' || ch == '+' || ch == '.';
+        });
+    }
+
+    bool parseFloats(std::stringstream& stream, std::vector<float>& floats, int amount) {
+        floats.clear();
+        floats.resize(amount);
+        for (int i = 0; i < amount; i++)
+            stream >> floats.at(i);
+        
+        return stream.good() || stream.eof();
+    }
+
+    bool readTangentSpaceFromFile(std::string vFieldPath) {
+        if (vFieldPath.length() == 0)
+            return false;
+        
+        std::size_t dotIndex = vFieldPath.find_last_of('.');
+        if (dotIndex != std::string::npos) {
+            std::string extention = vFieldPath.substr(dotIndex + 1);
+            if (extention == "vfield" || extention == "VFIELD") {
+                std::ifstream ifile{ vFieldPath };
+                std::string line;
+                bool vFieldFound = false;
+                while (std::getline(ifile, line)) {
+                    if (line == "k1\t k2\t k1v_x\t k1v_y\t k1v_z\t k2v_x\t k2v_y\t k2v_z") {
+                        vFieldFound = true;
+                        break;
+                    }
+                }
+                if (vFieldFound) {
+                    std::stringstream sstream;
+                    const Eigen::MatrixXd& V = model.getVerticesMatrix();
+                    std::vector<float> parsedNums;
+                    int scannedLines = 0;
+                    while (std::getline(ifile, line) && isNumberList(line)) {
+                        sstream << line << " ";
+                        scannedLines++;
+                    }
+                    if (scannedLines == V.rows()) {
+                        Eigen::MatrixXd T(scannedLines, 3);
+                        Eigen::MatrixXd B(scannedLines, 3);
+                        for (int i = 0; i < scannedLines; i++) {
+                            if (parseFloats(sstream, parsedNums, 8)) {
+                                T.row(i) << parsedNums[2], parsedNums[3], parsedNums[4];
+                                T.row(i) *= parsedNums[0];
+                                B.row(i) << parsedNums[5], parsedNums[6], parsedNums[7];
+                                B.row(i) *= parsedNums[1];
+                            }
+                            else {
+                                std::cout << "Parse error in " << vFieldPath << " at tangent space " << i << ".\n";
+                                return false;
+                            }
+                        }
+                        model.setTangentSpace(T, B);
+                        return true;
+                    } else
+                        std::cout << "Invalid number of tangent spaces in " << vFieldPath << ": found " << scannedLines << ", required " << V.rows() << ".\n";
+                } else
+                    std::cout << "Tangent spaces not found in " << vFieldPath << "\n";
+            } else
+                std::cout << "File " << vFieldPath << " has invalid extension: expected .vfield, .VFIELD\n";
+        } else
+            std::cout << "File " << vFieldPath << " has no extension: expected .vfield, .VFIELD\n";
+        
+        return false;
+    }
+
 public:
     Application() {}
 
@@ -721,7 +801,7 @@ public:
             << "  ALT + Left Click             Drag region\n\n";
     }
 
-    bool init(char* modelPath = "./models/plane.obj") {
+    bool init(std::string modelPath = "./models/plane.obj") {
         // Load mesh from file.
         if (!viewer.load_mesh_from_file(modelPath)) return false;
         model = Model(viewer.data().V, viewer.data().F, viewer.data().V_normals);
@@ -741,9 +821,10 @@ public:
         viewer.callback_mouse_move = [this](igl::opengl::glfw::Viewer& viewer, int x, int y) { return mouseMoveCallback(x, y); };
         viewer.callback_mouse_up = [this](igl::opengl::glfw::Viewer& viewer, int button, int modifier) { return mouseUpCallback(button, modifier); };
         viewer.callback_pre_draw = [this](igl::opengl::glfw::Viewer& viewer) { return preDrawCallback(); };
-
         guiMenu.callback_draw_viewer_window = [this]() { drawViewerWindowCallback(); };
         guiMenu.callback_draw_viewer_menu = [this]() { drawViewerMenuCallback(); };
+
+        return true;
     }
 
     void launch() {

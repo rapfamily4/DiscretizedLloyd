@@ -197,7 +197,14 @@ public:
         B.conservativeResize(0, 3);
     }
 
-    void fillTangentSpaceFlat(glm::vec3& tangent, glm::vec3& bitangent) {
+    void setTangentSpace(Eigen::MatrixXd& tangents, Eigen::MatrixXd& bitangents) {
+        assert(tangents.rows() == V.rows() && tangents.cols() == 3);
+        assert(bitangents.rows() == V.rows() && bitangents.cols() == 3);
+        T = tangents;
+        B = bitangents;
+    }
+
+    void setTangentSpaceFlat(glm::vec3& tangent, glm::vec3& bitangent) {
         T.resize(V.rows(), 3);
         B.resize(V.rows(), 3);
         for (int i = 0; i < V.rows(); i++) {
