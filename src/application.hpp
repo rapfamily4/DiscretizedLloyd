@@ -21,6 +21,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include "dijkstra_partitioner.hpp"
 #include "model.hpp"
+#include "tangent_field.hpp"
 #include "stopwatch.hpp"
 #include "performance_stats.hpp"
 #include "consts.hpp"
@@ -759,21 +760,21 @@ private:
                         scannedLines++;
                     }
                     if (scannedLines == V.rows()) {
-                        Eigen::MatrixXd T(scannedLines, 3);
-                        Eigen::MatrixXd B(scannedLines, 3);
+                        std::vector<TangentField> fields;
                         for (int i = 0; i < scannedLines; i++) {
                             if (parseFloats(sstream, parsedNums, 8)) {
-                                T.row(i) << parsedNums[2], parsedNums[3], parsedNums[4];
-                                T.row(i) *= parsedNums[0];
-                                B.row(i) << parsedNums[5], parsedNums[6], parsedNums[7];
-                                B.row(i) *= parsedNums[1];
+                                glm::vec3 tDir{ parsedNums[2], parsedNums[3], parsedNums[4] };
+                                glm::vec3 bDir{ parsedNums[5], parsedNums[6], parsedNums[7] };
+                                float tMag = parsedNums[0];
+                                float bMag = parsedNums[1];
+                                fields.emplace_back(tMag, bMag, tDir, bDir);
                             }
                             else {
                                 std::cout << "Parse error in " << vFieldPath << " at tangent space " << i << ".\n";
                                 return false;
                             }
                         }
-                        model.setTangentSpace(T, B);
+                        model.setTangentFields(fields);
                         return true;
                     } else
                         std::cout << "Invalid number of tangent spaces in " << vFieldPath << ": found " << scannedLines << ", required " << V.rows() << ".\n";
