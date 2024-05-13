@@ -19,6 +19,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/color_space.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <imgui_internal.h>
 #include "dijkstra_partitioner.hpp"
 #include "model.hpp"
 #include "tangent_field.hpp"
@@ -291,7 +292,7 @@ private:
         if (!showGroundTruth && triangulationFactor <= 0) {
             if (showTreesOverlay)
                 plotTrees();
-            if (showTangentFieldsOverlay)
+            if (showTangentFieldsOverlay && model.hasTangentFields())
                 plotTangentFields();
         }
         assignColorsToModel(regionAssignments);
@@ -415,10 +416,8 @@ private:
     }
 
     void setGraphType(GraphType targetType) {
-        if (targetType == graphType) return;
-
         std::vector<int> newSeeds;
-        if (convertSeeds(targetType, newSeeds))
+        if (targetType != graphType && convertSeeds(targetType, newSeeds))
             partitioner.setSeeds(newSeeds);
 
         std::vector<float> weights;
@@ -677,6 +676,10 @@ private:
                 plotOverlays();
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
             }
+            if (!model.hasTangentFields()) {
+                ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+            }
             if (ImGui::Checkbox("Show tangent fields", &showTangentFieldsOverlay)) {
                 plotOverlays();
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
@@ -684,6 +687,10 @@ private:
             if (ImGui::DragFloat("Tangent fields' scale", &tangentFieldsScale, 0.05f)) {
                 plotOverlays();
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+            }
+            if (!model.hasTangentFields()) {
+                ImGui::PopItemFlag();
+                ImGui::PopStyleVar();
             }
             if (showAdvancedOptions)
                 makeCheckboxWithOptionId("Show overlays depth", viewer.data().show_overlay_depth);
@@ -711,10 +718,15 @@ private:
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 moveSeedsRandomly();
             }
-            int targetType = (int)graphType;
             ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.55f);
+            int targetType = (int)graphType;
             if (ImGui::Combo("Graph type", &targetType, "Vertex\0Vertex Dense\0Triangle\0Triangle Dense\0Mixed\0\0"))
                 setGraphType((GraphType)targetType);
+            int distFunc = (int)model.distanceFunction;
+            if (ImGui::Combo("Distance function", &distFunc, "Euclidean\0Manhattan\0Infinite\0\0")) {
+                model.distanceFunction = (Model::DistanceFunction)distFunc;
+                setGraphType(graphType);
+            }
             ImGui::PopItemWidth();
         }
 

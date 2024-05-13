@@ -16,16 +16,22 @@ public:
     TangentField(float tMagnitude, float bMagnitude, glm::vec3 tDirection, glm::vec3 bDirection) :
         tMagnitude{ tMagnitude }, bMagnitude{ bMagnitude }, tDirection{ tDirection }, bDirection{ bDirection } {}
 
-    float euclideanDistance(glm::vec3 delta) const {
+    float euclideanDistance(const glm::vec3& delta) const {
         float tDot = glm::dot(tMagnitude * tDirection, delta);
         float bDot = glm::dot(bMagnitude * bDirection, delta);
         return std::sqrt(tDot * tDot + bDot * bDot);
     }
 
-    float manhattanDistance(glm::vec3 delta) const {
+    float manhattanDistance(const glm::vec3& delta) const {
         float tDot = glm::dot(tMagnitude * tDirection, delta);
         float bDot = glm::dot(bMagnitude * bDirection, delta);
         return std::abs(tDot) + std::abs(bDot);
+    }
+
+    float infiniteDistance(const glm::vec3& delta) const {
+        float tDot = glm::dot(tMagnitude * tDirection, delta);
+        float bDot = glm::dot(bMagnitude * bDirection, delta);
+        return std::max(std::abs(tDot), std::abs(bDot));
     }
 
     static void average(const TangentField& field0, const TangentField& field1, TangentField& avg) {

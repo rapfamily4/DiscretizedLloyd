@@ -47,17 +47,28 @@ private:
         TangentField::average(ijAvg, vFields[F(t, 2)], field);
     }
 
-    float verticesDistance(int i, int j) {
-        assert(i < V.rows() && j < V.rows());
-        
-        glm::vec3 vertex = glm::vec3(V(i, 0), V(i, 1), V(i, 2));
-        glm::vec3 neighbor = glm::vec3(V(j, 0), V(j, 1), V(j, 2));
-        if (vFields.size() > 0) {
-            TangentField avgField;
-            TangentField::average(vFields[i], vFields[j], avgField);
-            return avgField.euclideanDistance(neighbor - vertex);
+    float distanceGivenType(const glm::vec3& delta) {
+        switch (distanceFunction) {
+            case EUCLIDEAN_D:
+                return glm::length(delta);
+            case MANHATTAN_D:
+                return std::abs(delta.x) + std::abs(delta.y) + std::abs(delta.z);
+            case INFINITE_D:
+                return std::max(std::max(std::abs(delta.x), std::abs(delta.y)), std::abs(delta.z));
         }
-        else return glm::distance(vertex, neighbor);
+        return -1;
+    }
+
+    float weightedDistanceGivenType(const TangentField& field, const glm::vec3& delta) {
+        switch (distanceFunction) {
+            case EUCLIDEAN_D:
+                return field.euclideanDistance(delta);
+            case MANHATTAN_D:
+                return field.manhattanDistance(delta);
+            case INFINITE_D:
+                return field.infiniteDistance(delta);
+        }
+        return -1;
     }
 
     float oppositePointsDistance(glm::vec3 vertexDelta, HalfEdge trianglesBase) {
@@ -73,6 +84,19 @@ private:
         return std::sqrt((sqrDoubleArea + sqrDot) / sqrBaseLength);
     }
 
+    float verticesDistance(int i, int j) {
+        assert(i < V.rows() && j < V.rows());
+        
+        glm::vec3 vertex = glm::vec3(V(i, 0), V(i, 1), V(i, 2));
+        glm::vec3 neighbor = glm::vec3(V(j, 0), V(j, 1), V(j, 2));
+        glm::vec3 delta = neighbor - vertex;
+        if (vFields.size() > 0) {
+            TangentField avgField;
+            TangentField::average(vFields[i], vFields[j], avgField);
+            return weightedDistanceGivenType(avgField, delta);
+        } else return distanceGivenType(neighbor - vertex);
+    }
+
     float oppositeVerticesDistance(int i, int j, HalfEdge trianglesBase) {
         glm::vec3 delta = glm::vec3(
             V(i, 0) - V(j, 0),
@@ -80,13 +104,13 @@ private:
             V(i, 2) - V(j, 2)
         );
         float dist = oppositePointsDistance(delta, trianglesBase);
+        delta = glm::normalize(-delta) * dist;
         if (vFields.size() > 0) {
             TangentField avgField;
             TangentField::average(vFields[i], vFields[j], avgField);
-            delta = glm::normalize(-delta) * dist;
-            return avgField.euclideanDistance(delta);
+            return weightedDistanceGivenType(avgField, delta);
         }
-        else return dist;
+        else return distanceGivenType(delta);
     }
 
     float trianglesDistance(int i, int j, HalfEdge trianglesBase) {
@@ -94,45 +118,45 @@ private:
         triangleBarycenter(i, iBarycenter);
         triangleBarycenter(j, jBarycenter);
         float dist = oppositePointsDistance(iBarycenter - jBarycenter, trianglesBase);
+        glm::vec3 delta = glm::normalize(jBarycenter - iBarycenter) * dist;
         if (vFields.size() > 0) {
             TangentField iAvgField, jAvgField, avgField;
             tangentFieldFromTriangle(i, iAvgField);
             tangentFieldFromTriangle(j, jAvgField);
             TangentField::average(iAvgField, jAvgField, avgField);
-            glm::vec3 delta = glm::normalize(jBarycenter - iBarycenter) * dist;
-            return avgField.euclideanDistance(delta);
+            return weightedDistanceGivenType(avgField, delta);
         }
-        else return dist;
+        else return distanceGivenType(delta);
     }
 
     float vertexTriangleDistance(int v, int t) {
         glm::vec3 vPoint, tBarycenter;
         vPoint = glm::vec3(V(v, 0), V(v, 1), V(v, 2));
         triangleBarycenter(t, tBarycenter);
+        glm::vec3 delta = tBarycenter - vPoint;
         if (vFields.size() > 0) {
             TangentField tAvgField, avgField;
             tangentFieldFromTriangle(t, tAvgField);
             TangentField::average(vFields[v], tAvgField, avgField);
-            glm::vec3 delta = tBarycenter - vPoint;
-            return avgField.euclideanDistance(delta);
+            return weightedDistanceGivenType(avgField, delta);
         }
-        else return glm::length(tBarycenter - vPoint);
+        else return distanceGivenType(delta);
     }
 
 public:
+    enum DistanceFunction {
+        EUCLIDEAN_D,
+        MANHATTAN_D,
+        INFINITE_D,
+    };
+
+    DistanceFunction distanceFunction = DistanceFunction::EUCLIDEAN_D;
+
+
     Model() {}
     Model(Eigen::MatrixXd vertices, Eigen::MatrixXi triangles) :
         V{ vertices },
         F{ triangles } {
-    }
-
-    void clearTangentFields() {
-        vFields.clear();
-    }
-
-    void setVertexwiseTangentFields(const std::vector<TangentField>& vFields) {
-        assert(vFields.size() == V.rows());
-        this->vFields = vFields;
     }
 
     void vertexSurroundingAreas(std::vector<float>& vertexAreas) {
@@ -360,6 +384,19 @@ public:
         trianglesBarycenters(trPositions);
         positions.insert(positions.end(), trPositions.begin(), trPositions.end());
         assert(positions.size() == F.rows() + V.rows());
+    }
+
+    bool hasTangentFields() {
+        return vFields.size() > 0;
+    }
+
+    void clearTangentFields() {
+        vFields.clear();
+    }
+
+    void setVertexwiseTangentFields(const std::vector<TangentField>& vFields) {
+        assert(vFields.size() == V.rows());
+        this->vFields = vFields;
     }
 
     const Eigen::MatrixXd& getVerticesMatrix() const {
