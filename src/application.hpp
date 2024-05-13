@@ -46,9 +46,12 @@ private:
     Model model;
     Stopwatch swatch;
     GraphType graphType = GraphType::VERTEX;
+    float tangentFieldsScale = 0.25f;
     float triangulationFactor = 0;
     glm::vec3 triangulationColor{ 0.7f, 0.7f, 0.7f };
     bool showAdvancedOptions = false;
+    bool showTreesOverlay = true;
+    bool showTangentFieldsOverlay = true;
     bool showGroundTruth = false;
     bool isDraggingRegion = false;
 
@@ -245,7 +248,32 @@ private:
         viewer.data().add_edges(P0, P1, Eigen::RowVector3d(1.0, 1.0, 1.0));
     }
 
-    void plotDataOnScreen() {
+    void plotTangentFields() {
+        igl::opengl::ViewerData& data = viewer.data();
+        const std::vector<TangentField>& fields = model.getTangentFields();
+        std::vector<glm::vec3> positions;
+        model.verticesPositions(positions);
+        
+        assert(fields.size() == positions.size());
+        Eigen::MatrixXd P(fields.size(), 3);
+        Eigen::MatrixXd T(fields.size(), 3);
+        Eigen::MatrixXd B(fields.size(), 3);
+        for (int i = 0; i < fields.size(); i++) {
+            glm::vec3 t, b;
+            glm::vec3& p = positions[i];
+            fields[i].tangent(t);
+            fields[i].bitangent(b);
+            t = p + t * tangentFieldsScale;
+            b = p + b * tangentFieldsScale;
+            P.row(i) << p.x, p.y, p.z;
+            T.row(i) << t.x, t.y, t.z;
+            B.row(i) << b.x, b.y, b.z;
+        }
+        data.add_edges(P, T, Eigen::RowVector3d{ 1, 0, 0 });
+        data.add_edges(P, B, Eigen::RowVector3d{ 0, 1, 0 });
+    }
+
+    void plotOverlays() {
         igl::opengl::ViewerData& data = viewer.data();
         data.clear_points();
         data.clear_edges();
@@ -260,8 +288,12 @@ private:
             partitioner.nodewiseRegionAssignments(regionAssignments);
         if (triangulationFactor > 0)
             triangulationPreview(regionAssignments);
-        if (!showGroundTruth && triangulationFactor <= 0)
-            plotTrees();
+        if (!showGroundTruth && triangulationFactor <= 0) {
+            if (showTreesOverlay)
+                plotTrees();
+            if (showTangentFieldsOverlay)
+                plotTangentFields();
+        }
         assignColorsToModel(regionAssignments);
     }
 
@@ -300,7 +332,7 @@ private:
     void runPartitioner() {
         partitioner.resetState();
         partitioner.partitionNodes();
-        plotDataOnScreen();
+        plotOverlays();
     }
 
     void generateSeeds() {
@@ -311,7 +343,7 @@ private:
     void moveSeedsRandomly() {
         partitioner.moveSeedsRandomly();
         partitioner.partitionNodes();
-        plotDataOnScreen();
+        plotOverlays();
     }
 
     void relaxPartitioner(bool plotData = true) {
@@ -319,13 +351,13 @@ private:
         partitioner.resetState();
         partitioner.fullRelaxation();
         printPerformanceTestResults(swatch.end());
-        if (plotData) plotDataOnScreen();
+        if (plotData) plotOverlays();
     }
 
     void relaxPartitionerOnce() {
         partitioner.relaxSeeds();
         partitioner.partitionNodes();
-        plotDataOnScreen();
+        plotOverlays();
     }
 
     // Returns true if seeds have been converted.
@@ -422,7 +454,7 @@ private:
                         partitioner.restoreSeeds();
                     }
         }
-        plotDataOnScreen();
+        plotOverlays();
 
         // Restore previous parameters.
         setGraphType(typeAtStart);
@@ -466,7 +498,7 @@ private:
         case 'V':
         case 'v':
             showGroundTruth = !showGroundTruth;
-            plotDataOnScreen();
+            plotOverlays();
             return true;
         }
         return false;
@@ -641,12 +673,20 @@ private:
 
         // Overlays
         if (ImGui::CollapsingHeader("Overlays", ImGuiTreeNodeFlags_DefaultOpen)) {
-            // show tangent fields
-            // tangent fields' scale
-            if (showAdvancedOptions) {
-                makeCheckboxWithOptionId("Show overlays", viewer.data().show_overlay);
-                makeCheckboxWithOptionId("Show overlays depth", viewer.data().show_overlay_depth);
+            if (ImGui::Checkbox("Show shortest paths", &showTreesOverlay)) {
+                plotOverlays();
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
             }
+            if (ImGui::Checkbox("Show tangent fields", &showTangentFieldsOverlay)) {
+                plotOverlays();
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+            }
+            if (ImGui::DragFloat("Tangent fields' scale", &tangentFieldsScale, 0.05f)) {
+                plotOverlays();
+                viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
+            }
+            if (showAdvancedOptions)
+                makeCheckboxWithOptionId("Show overlays depth", viewer.data().show_overlay_depth);
         }
 
         // Graph
@@ -703,9 +743,9 @@ private:
                 runPerformanceTest(viewer.data());
             if (ImGui::Checkbox("Ground truth", &showGroundTruth)) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
-                plotDataOnScreen();
+                plotOverlays();
             }
-            if (ImGui::SliderFloat("Triangulation preview", &triangulationFactor, 0.0f, 1.0f)) {
+            if (ImGui::SliderFloat("Delaunay preview", &triangulationFactor, 0.0f, 1.0f)) {
                 if (triangulationFactor <= 0) {
                     viewer.data().set_vertices(model.getVerticesMatrix());
                     viewer.data().compute_normals();
@@ -714,12 +754,12 @@ private:
                 else
                     viewer.data().show_lines = true;
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
-                plotDataOnScreen();
+                plotOverlays();
             }
-            if (showAdvancedOptions && ImGui::ColorEdit3("Triangulation color", glm::value_ptr(triangulationColor),
+            if (showAdvancedOptions && ImGui::ColorEdit3("Delaunay color", glm::value_ptr(triangulationColor),
                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel)) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
-                plotDataOnScreen();
+                plotOverlays();
             }
         }
     }

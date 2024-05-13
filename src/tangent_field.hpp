@@ -15,13 +15,13 @@ public:
     TangentField(float tMagnitude, float bMagnitude, glm::vec3 tDirection, glm::vec3 bDirection) :
         tMagnitude{ tMagnitude }, bMagnitude{ bMagnitude }, tDirection{ tDirection }, bDirection{ bDirection } {}
 
-    float euclideanDistance(glm::vec3 delta) {
+    float euclideanDistance(glm::vec3 delta) const {
         float tDot = glm::dot(tMagnitude * tDirection, delta);
         float bDot = glm::dot(bMagnitude * bDirection, delta);
         return std::sqrt(tDot * tDot + bDot * bDot);
     }
 
-    float manhattanDistance(glm::vec3 delta) {
+    float manhattanDistance(glm::vec3 delta) const {
         return -1;
     }
 
@@ -61,6 +61,14 @@ public:
             break;
         }
         avg = TangentField(tMixedMag, bMixedMag, tMixedDir, bMixedDir);
+    }
+
+    void tangent(glm::vec3& t) const {
+        t = tDirection * tMagnitude;
+    }
+
+    void bitangent(glm::vec3& b) const {
+        b = bDirection * bMagnitude;
     }
 };
 

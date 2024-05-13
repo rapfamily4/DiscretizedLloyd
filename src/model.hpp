@@ -371,6 +371,10 @@ public:
     const Eigen::MatrixXi& getFacesMatrix() const {
         return F;
     }
+
+    const std::vector<TangentField>& getTangentFields() const {
+        return fields;
+    }
 };
 
 #endif
