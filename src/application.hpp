@@ -250,19 +250,19 @@ private:
 
     void plotTangentFields() {
         igl::opengl::ViewerData& data = viewer.data();
-        const std::vector<TangentField>& fields = model.getTangentFields();
+        const std::vector<TangentField>& vFields = model.getVertexwiseTangentFields();
         std::vector<glm::vec3> positions;
         model.verticesPositions(positions);
         
-        assert(fields.size() == positions.size());
-        Eigen::MatrixXd P(fields.size(), 3);
-        Eigen::MatrixXd T(fields.size(), 3);
-        Eigen::MatrixXd B(fields.size(), 3);
-        for (int i = 0; i < fields.size(); i++) {
+        assert(vFields.size() == positions.size());
+        Eigen::MatrixXd P(vFields.size(), 3);
+        Eigen::MatrixXd T(vFields.size(), 3);
+        Eigen::MatrixXd B(vFields.size(), 3);
+        for (int i = 0; i < vFields.size(); i++) {
             glm::vec3 t, b;
             glm::vec3& p = positions[i];
-            fields[i].tangent(t);
-            fields[i].bitangent(b);
+            vFields[i].tangent(t);
+            vFields[i].bitangent(b);
             t = p + t * tangentFieldsScale;
             b = p + b * tangentFieldsScale;
             P.row(i) << p.x, p.y, p.z;
@@ -592,7 +592,7 @@ private:
             if (ImGui::Button("Load Mesh", ImVec2((w - p) / 2.f, 0))) {
                 viewer.open_dialog_load_mesh();
                 if (viewer.data_list.size() > 1) {
-                    model = Model(viewer.data().V, viewer.data().F, viewer.data().V_normals);
+                    model = Model(viewer.data().V, viewer.data().F);
                     while (viewer.selected_data_index != 0)
                         viewer.erase_mesh(0);
                     viewerSetup(viewer);
@@ -806,21 +806,21 @@ private:
                         scannedLines++;
                     }
                     if (scannedLines == V.rows()) {
-                        std::vector<TangentField> fields;
+                        std::vector<TangentField> vFields;
                         for (int i = 0; i < scannedLines; i++) {
                             if (parseFloats(sstream, parsedNums, 8)) {
                                 glm::vec3 tDir{ parsedNums[2], parsedNums[3], parsedNums[4] };
                                 glm::vec3 bDir{ parsedNums[5], parsedNums[6], parsedNums[7] };
                                 float tMag = parsedNums[0];
                                 float bMag = parsedNums[1];
-                                fields.emplace_back(tMag, bMag, tDir, bDir);
+                                vFields.emplace_back(tMag, bMag, tDir, bDir);
                             }
                             else {
                                 std::cout << "Parse error in " << vFieldPath << " at tangent space " << i << ".\n";
                                 return false;
                             }
                         }
-                        model.setTangentFields(fields);
+                        model.setVertexwiseTangentFields(vFields);
                         return true;
                     } else
                         std::cout << "Invalid number of tangent spaces in " << vFieldPath << ": found " << scannedLines << ", required " << V.rows() << ".\n";
@@ -851,7 +851,7 @@ public:
     bool init(std::string modelPath = "./models/plane.obj") {
         // Load mesh from file.
         if (!viewer.load_mesh_from_file(modelPath)) return false;
-        model = Model(viewer.data().V, viewer.data().F, viewer.data().V_normals);
+        model = Model(viewer.data().V, viewer.data().F);
 
         // Dijkstra partitioner.
         //model.fillTangentSpaceFlat(glm::vec3(2, 0, 0), glm::vec3(0, 1, 0)); // TODO: erase this line later

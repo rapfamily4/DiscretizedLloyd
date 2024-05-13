@@ -1,6 +1,7 @@
 #ifndef TANGENT_FIELD_HPP
 #define TANGENT_FIELD_HPP
 
+#include <cmath>
 #include <glm/glm.hpp>
 
 class TangentField {
@@ -22,7 +23,9 @@ public:
     }
 
     float manhattanDistance(glm::vec3 delta) const {
-        return -1;
+        float tDot = glm::dot(tMagnitude * tDirection, delta);
+        float bDot = glm::dot(bMagnitude * bDirection, delta);
+        return std::abs(tDot) + std::abs(bDot);
     }
 
     static void average(const TangentField& field0, const TangentField& field1, TangentField& avg) {

@@ -30,8 +30,7 @@ private:
 
     Eigen::MatrixXd V;
     Eigen::MatrixXi F;
-    Eigen::MatrixXd N;
-    std::vector<TangentField> fields;
+    std::vector<TangentField> vFields;
 
 
     void vertexTriangleAdjacency(std::vector<std::vector<int>>& VT) {
@@ -44,8 +43,8 @@ private:
 
     void tangentFieldFromTriangle(int t, TangentField& field) {
         TangentField ijAvg;
-        TangentField::average(fields[F(t, 0)], fields[F(t, 1)], ijAvg);
-        TangentField::average(ijAvg, fields[F(t, 2)], field);
+        TangentField::average(vFields[F(t, 0)], vFields[F(t, 1)], ijAvg);
+        TangentField::average(ijAvg, vFields[F(t, 2)], field);
     }
 
     float verticesDistance(int i, int j) {
@@ -53,9 +52,9 @@ private:
         
         glm::vec3 vertex = glm::vec3(V(i, 0), V(i, 1), V(i, 2));
         glm::vec3 neighbor = glm::vec3(V(j, 0), V(j, 1), V(j, 2));
-        if (fields.size() > 0) {
+        if (vFields.size() > 0) {
             TangentField avgField;
-            TangentField::average(fields[i], fields[j], avgField);
+            TangentField::average(vFields[i], vFields[j], avgField);
             return avgField.euclideanDistance(neighbor - vertex);
         }
         else return glm::distance(vertex, neighbor);
@@ -81,9 +80,9 @@ private:
             V(i, 2) - V(j, 2)
         );
         float dist = oppositePointsDistance(delta, trianglesBase);
-        if (fields.size() > 0) {
+        if (vFields.size() > 0) {
             TangentField avgField;
-            TangentField::average(fields[i], fields[j], avgField);
+            TangentField::average(vFields[i], vFields[j], avgField);
             delta = glm::normalize(-delta) * dist;
             return avgField.euclideanDistance(delta);
         }
@@ -95,7 +94,7 @@ private:
         triangleBarycenter(i, iBarycenter);
         triangleBarycenter(j, jBarycenter);
         float dist = oppositePointsDistance(iBarycenter - jBarycenter, trianglesBase);
-        if (fields.size() > 0) {
+        if (vFields.size() > 0) {
             TangentField iAvgField, jAvgField, avgField;
             tangentFieldFromTriangle(i, iAvgField);
             tangentFieldFromTriangle(j, jAvgField);
@@ -110,10 +109,10 @@ private:
         glm::vec3 vPoint, tBarycenter;
         vPoint = glm::vec3(V(v, 0), V(v, 1), V(v, 2));
         triangleBarycenter(t, tBarycenter);
-        if (fields.size() > 0) {
+        if (vFields.size() > 0) {
             TangentField tAvgField, avgField;
             tangentFieldFromTriangle(t, tAvgField);
-            TangentField::average(fields[v], tAvgField, avgField);
+            TangentField::average(vFields[v], tAvgField, avgField);
             glm::vec3 delta = tBarycenter - vPoint;
             return avgField.euclideanDistance(delta);
         }
@@ -122,19 +121,18 @@ private:
 
 public:
     Model() {}
-    Model(Eigen::MatrixXd vertices, Eigen::MatrixXi triangles, Eigen::MatrixXd verticesNormals) :
+    Model(Eigen::MatrixXd vertices, Eigen::MatrixXi triangles) :
         V{ vertices },
-        F{ triangles },
-        N{ verticesNormals } {
+        F{ triangles } {
     }
 
     void clearTangentFields() {
-        fields.clear();
+        vFields.clear();
     }
 
-    void setTangentFields(const std::vector<TangentField>& newFields) {
-        assert(newFields.size() == V.rows());
-        fields = newFields;
+    void setVertexwiseTangentFields(const std::vector<TangentField>& vFields) {
+        assert(vFields.size() == V.rows());
+        this->vFields = vFields;
     }
 
     void vertexSurroundingAreas(std::vector<float>& vertexAreas) {
@@ -372,8 +370,8 @@ public:
         return F;
     }
 
-    const std::vector<TangentField>& getTangentFields() const {
-        return fields;
+    const std::vector<TangentField>& getVertexwiseTangentFields() const {
+        return vFields;
     }
 };
 
