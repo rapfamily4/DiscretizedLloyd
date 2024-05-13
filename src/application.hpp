@@ -48,6 +48,7 @@ private:
     GraphType graphType = GraphType::VERTEX;
     float triangulationFactor = 0;
     glm::vec3 triangulationColor{ 0.7f, 0.7f, 0.7f };
+    bool showAdvancedOptions = false;
     bool showGroundTruth = false;
     bool isDraggingRegion = false;
 
@@ -551,6 +552,7 @@ private:
     }
 
     void drawViewerMenuCallback() {
+        ImGui::Checkbox("Advanced options", &showAdvancedOptions);
         // Mesh
         if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen)) {
             float w = ImGui::GetContentRegionAvail().x;
@@ -579,7 +581,7 @@ private:
         }
 
         // Viewing options
-        if (ImGui::CollapsingHeader("Viewing Options", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (showAdvancedOptions && ImGui::CollapsingHeader("Viewing Options", ImGuiTreeNodeFlags_DefaultOpen)) {
             if (ImGui::Button("Center object", ImVec2(-1, 0)))
                 viewer.core().align_camera_center(viewer.data().V, viewer.data().F);
             if (ImGui::Button("Snap canonical view", ImVec2(-1, 0)))
@@ -624,9 +626,9 @@ private:
             );
             };
         // Draw options
-        if (ImGui::CollapsingHeader("Draw Options", ImGuiTreeNodeFlags_DefaultOpen)) {
-            makeCheckboxWithOptionId("Fill faces", viewer.data().show_faces);
+        if (showAdvancedOptions && ImGui::CollapsingHeader("Draw Options", ImGuiTreeNodeFlags_DefaultOpen)) {
             makeCheckboxWithOptionId("Wireframe", viewer.data().show_lines);
+            makeCheckboxWithOptionId("Fill faces", viewer.data().show_faces);
             ImGui::Checkbox("Double sided lighting", &viewer.data().double_sided);
             ImGui::ColorEdit4("Wireframe color", viewer.data().line_color.data(),
                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel);
@@ -639,8 +641,12 @@ private:
 
         // Overlays
         if (ImGui::CollapsingHeader("Overlays", ImGuiTreeNodeFlags_DefaultOpen)) {
-            makeCheckboxWithOptionId("Show overlays", viewer.data().show_overlay);
-            makeCheckboxWithOptionId("Show overlays depth", viewer.data().show_overlay_depth);
+            // show tangent fields
+            // tangent fields' scale
+            if (showAdvancedOptions) {
+                makeCheckboxWithOptionId("Show overlays", viewer.data().show_overlay);
+                makeCheckboxWithOptionId("Show overlays depth", viewer.data().show_overlay_depth);
+            }
         }
 
         // Graph
@@ -710,7 +716,7 @@ private:
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 plotDataOnScreen();
             }
-            if (ImGui::ColorEdit3("Triangulation color", glm::value_ptr(triangulationColor),
+            if (showAdvancedOptions && ImGui::ColorEdit3("Triangulation color", glm::value_ptr(triangulationColor),
                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel)) {
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
                 plotDataOnScreen();
