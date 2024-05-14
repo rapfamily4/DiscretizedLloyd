@@ -722,10 +722,12 @@ private:
             int targetType = (int)graphType;
             if (ImGui::Combo("Graph type", &targetType, "Vertex\0Vertex Dense\0Triangle\0Triangle Dense\0Mixed\0\0"))
                 setGraphType((GraphType)targetType);
-            int distFunc = (int)model.distanceFunction;
-            if (ImGui::Combo("Distance function", &distFunc, "Euclidean\0Manhattan\0Infinite\0\0")) {
-                model.distanceFunction = (Model::DistanceFunction)distFunc;
-                setGraphType(graphType);
+            if (showAdvancedOptions) {
+                int distFunc = (int)model.distanceFunction;
+                if (ImGui::Combo("Distance function", &distFunc, "Geodesic\0Manhattan\0Infinite\0\0")) {
+                    model.distanceFunction = (Model::DistanceFunction)distFunc;
+                    setGraphType(graphType);
+                }
             }
             ImGui::PopItemWidth();
         }
@@ -741,12 +743,14 @@ private:
                 relaxPartitionerOnce();
             }
             ImGui::Checkbox("Relax seeds over time", &viewer.core().is_animating);
-            ImGui::Combo("Greedy relaxation", (int*)(&partitioner.greedyRelaxationType), "Disabled\0Enabled\0Extended\0\0");
-            ImGui::Checkbox("Optimize precise relaxation", &partitioner.optimizePreciseRelaxation);
-            ImGui::Checkbox("Optimize Dijkstra", &partitioner.optimizeDijkstra);
             ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
             ImGui::InputDouble("Relaxation rate", &(viewer.core().animation_max_fps));
             ImGui::PopItemWidth();
+            if (showAdvancedOptions) {
+                ImGui::Combo("Greedy relaxation", (int*)(&partitioner.greedyRelaxationType), "Disabled\0Enabled\0Extended\0\0");
+                ImGui::Checkbox("Optimize precise relaxation", &partitioner.optimizePreciseRelaxation);
+                ImGui::Checkbox("Optimize Dijkstra", &partitioner.optimizeDijkstra);
+            }
         }
 
         // Tests
@@ -778,7 +782,7 @@ private:
 
     bool isNumberList(std::string line) {
         return std::all_of(line.begin(), line.end(), [](char ch) {
-            return std::isdigit(ch) || std::isspace(ch) || ch == '-' || ch == '+' || ch == '.';
+            return std::isdigit(ch) || std::isspace(ch) || ch == '-' || ch == '+' || ch == '.' || ch == 'e';
         });
     }
 
