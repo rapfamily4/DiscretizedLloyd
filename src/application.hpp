@@ -22,7 +22,7 @@
 #include <imgui_internal.h>
 #include "dijkstra_partitioner.hpp"
 #include "model.hpp"
-#include "tangent_field.hpp"
+#include "tangent_space.hpp"
 #include "stopwatch.hpp"
 #include "performance_stats.hpp"
 #include "consts.hpp"
@@ -251,19 +251,19 @@ private:
 
     void plotTangentFields() {
         igl::opengl::ViewerData& data = viewer.data();
-        const std::vector<TangentField>& vFields = model.getVertexwiseTangentFields();
+        const std::vector<TangentSpace>& vfield = model.getTangentField();
         std::vector<glm::vec3> positions;
         model.verticesPositions(positions);
         
-        assert(vFields.size() == positions.size());
-        Eigen::MatrixXd P(vFields.size(), 3);
-        Eigen::MatrixXd T(vFields.size(), 3);
-        Eigen::MatrixXd B(vFields.size(), 3);
-        for (int i = 0; i < vFields.size(); i++) {
+        assert(vfield.size() == positions.size());
+        Eigen::MatrixXd P(vfield.size(), 3);
+        Eigen::MatrixXd T(vfield.size(), 3);
+        Eigen::MatrixXd B(vfield.size(), 3);
+        for (int i = 0; i < vfield.size(); i++) {
             glm::vec3 t, b;
             glm::vec3& p = positions[i];
-            vFields[i].tangent(t);
-            vFields[i].bitangent(b);
+            vfield[i].tangent(t);
+            vfield[i].bitangent(b);
             t = p + t * tangentFieldsScale;
             b = p + b * tangentFieldsScale;
             P.row(i) << p.x, p.y, p.z;
@@ -292,7 +292,7 @@ private:
         if (!showGroundTruth && triangulationFactor <= 0) {
             if (showTreesOverlay)
                 plotTrees();
-            if (showTangentFieldsOverlay && model.hasTangentFields())
+            if (showTangentFieldsOverlay && model.hasTangentField())
                 plotTangentFields();
         }
         assignColorsToModel(regionAssignments);
@@ -676,7 +676,7 @@ private:
                 plotOverlays();
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
             }
-            if (!model.hasTangentFields()) {
+            if (!model.hasTangentField()) {
                 ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
                 ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
             }
@@ -688,7 +688,7 @@ private:
                 plotOverlays();
                 viewer.data().dirty = igl::opengl::MeshGL::DIRTY_ALL;
             }
-            if (!model.hasTangentFields()) {
+            if (!model.hasTangentField()) {
                 ImGui::PopItemFlag();
                 ImGui::PopStyleVar();
             }
@@ -822,21 +822,21 @@ private:
                         scannedLines++;
                     }
                     if (scannedLines == V.rows()) {
-                        std::vector<TangentField> vFields;
+                        std::vector<TangentSpace> vfield;
                         for (int i = 0; i < scannedLines; i++) {
                             if (parseFloats(sstream, parsedNums, 8)) {
                                 glm::vec3 tDir{ parsedNums[2], parsedNums[3], parsedNums[4] };
                                 glm::vec3 bDir{ parsedNums[5], parsedNums[6], parsedNums[7] };
                                 float tMag = parsedNums[0];
                                 float bMag = parsedNums[1];
-                                vFields.emplace_back(tMag, bMag, tDir, bDir);
+                                vfield.emplace_back(tMag, bMag, tDir, bDir);
                             }
                             else {
                                 std::cout << "Parse error in " << vFieldPath << " at tangent space " << i << ".\n";
                                 return false;
                             }
                         }
-                        model.setVertexwiseTangentFields(vFields);
+                        model.setTangentField(vfield);
                         return true;
                     } else
                         std::cout << "Invalid number of tangent spaces in " << vFieldPath << ": found " << scannedLines << ", required " << V.rows() << ".\n";
