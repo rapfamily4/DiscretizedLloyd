@@ -429,7 +429,7 @@ public:
 		dijkstraPerformance.recordIteration(swatch.end());
 	}
 
-	void relaxSeeds() {
+	void relaxSeedsOnce() {
 		if (relaxationOver) return;
 		prevSeeds = seeds;
 
@@ -453,11 +453,10 @@ public:
 		}
 	}
 
-	// change the name of this
-	void fullRelaxation() {
+	void relaxSeeds() {
 		while (!relaxationOver) {
-			relaxSeeds();
 			partitionNodes();
+			relaxSeedsOnce();
 		}
 	}
 

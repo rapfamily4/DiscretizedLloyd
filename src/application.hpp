@@ -73,7 +73,7 @@ private:
         return type == GraphType::VERTEX_DENSE || type == GraphType::TRIANGLE_DENSE;
     }
 
-    void printPerformanceTestResults(double runningTime) {
+    void printPerformanceResults(double runningTime) {
         std::cout << "-----------\n";
         std::cout << "Voronoi: " << runningTime << "ms\n";
         std::cout << "Graph type: ";
@@ -350,13 +350,13 @@ private:
     void relaxPartitioner(bool plotData = true) {
         swatch.begin();
         partitioner.resetState();
-        partitioner.fullRelaxation();
-        printPerformanceTestResults(swatch.end());
+        partitioner.relaxSeeds();
+        printPerformanceResults(swatch.end());
         if (plotData) plotOverlays();
     }
 
     void relaxPartitionerOnce() {
-        partitioner.relaxSeeds();
+        partitioner.relaxSeedsOnce();
         partitioner.partitionNodes();
         plotOverlays();
     }
