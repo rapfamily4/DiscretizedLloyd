@@ -233,7 +233,7 @@ private:
 		for (Node n : nodes)
 			scores[n.regionId] += n.distFromSeed * n.distFromSeed * n.weight;
 		for (int s : seeds)
-			if (!nodes[s].wasSeed())
+			//if (!nodes[s].wasSeed())
 				nodes[s].scoreAsSeed = scores[nodes[s].regionId];
 
 		if (!lockRegions)
