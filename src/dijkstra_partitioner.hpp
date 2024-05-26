@@ -252,26 +252,30 @@ private:
 		return regionId >= prevStartingScores.size() || prevStartingScores[regionId] != startingScores[regionId];
 	}
 
+	float computeHeuristic(int nodeId, int seedId) {
+		float heuristic = nodes[nodeId].subtreeCost * nodes[nodeId].subtreeWeight;
+		if (greedyRelaxationType == GreedyOption::EXTENDED) {
+			for (Edge n : nodes[nodeId].edges) {
+				if (nodes[n.target].parentId != seedId) continue;
+				heuristic += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
+			}
+		}
+		return heuristic;
+	}
+
 	bool moveSeedsGreedy() {
 		assert(!lockRegions && inGreedyPhase);
 		bool movedSeed = false;
 		for (int& s : seeds) {
-			float maxCost = -INF;
+			float maxHeuristic = -INF;
 			int candidate = s;
 			for (Edge e : nodes[s].edges) {
 				if (nodes[e.target].inSeedConfiguration) continue;
 				if (nodes[s].regionId != nodes[e.target].regionId) continue;
 
-				float newCost = nodes[e.target].subtreeCost * nodes[e.target].subtreeWeight;
-				if (greedyRelaxationType == GreedyOption::EXTENDED) {
-					for (Edge n : nodes[e.target].edges) {
-						if (nodes[n.target].parentId != s) continue;
-						newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
-					}
-				}
-
-				if (newCost > maxCost) {
-					maxCost = newCost;
+				float heuristic = computeHeuristic(e.target, s);
+				if (heuristic > maxHeuristic) {
+					maxHeuristic = heuristic;
 					candidate = e.target;
 				}
 			}
@@ -292,41 +296,28 @@ private:
 			int seedId = static_cast<int>(&s - seeds.data());
 			if (optimizePreciseRelaxation && !startingScoreChanged(seedId)) continue;
 
-			int minSeed = s;
-			int maxSeed = s;
+			int candidate = s;
 			float minScore = nodes[s].scoreAsSeed;
-			float maxCost = -INF;
+			float maxHeuristic = -INF;
 			for (Edge e : nodes[s].edges) {
 				if (nodes[e.target].inSeedConfiguration) continue;
 				if (nodes[s].regionId != nodes[e.target].regionId) continue;
 
 				if (nodes[e.target].wasSeed() && nodes[e.target].scoreAsSeed < minScore) {
 					minScore = nodes[e.target].scoreAsSeed;
-					minSeed = e.target;
-				} else if (minSeed == s) { // If a candidate's been already found with the precise heuristics, don't bother falling back to the greedy one.
-					float newCost = nodes[e.target].subtreeCost * nodes[e.target].subtreeWeight;
-					if (greedyRelaxationType == GreedyOption::EXTENDED) {
-						for (Edge n : nodes[e.target].edges) {
-							if (nodes[n.target].parentId != s) continue;
-							newCost += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
-						}
-					}
-					
-					if (!nodes[e.target].wasSeed() && newCost > maxCost) {
-						maxCost = newCost;
-						maxSeed = e.target;
+					candidate = e.target;
+				} else if (minScore == nodes[s].scoreAsSeed) { // If the fallback mechanism has not been enabled yet...
+					float heuristic = computeHeuristic(e.target, s);
+					if (!nodes[e.target].wasSeed() && heuristic > maxHeuristic) {
+						maxHeuristic = heuristic;
+						candidate = e.target;
 					}
 				}
 			}
 
-			if (minSeed != s) {
+			if (minScore != nodes[s].scoreAsSeed || maxHeuristic != -INF) {
 				nodes[s].inSeedConfiguration = false;
-				s = minSeed;
-				nodes[s].inSeedConfiguration = true;
-				movedSeed = true;
-			} else if (maxSeed != s) {
-				nodes[s].inSeedConfiguration = false;
-				s = maxSeed;
+				s = candidate;
 				nodes[s].inSeedConfiguration = true;
 				movedSeed = true;
 			}
