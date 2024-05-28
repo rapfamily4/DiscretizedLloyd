@@ -20,11 +20,11 @@ private:
 		Processed,
 	};
 
-	struct Edge {
+	struct Arch {
 		int target;
 		float cost;
 
-		Edge(int target, float cost) :
+		Arch(int target, float cost) :
 			target{ target },
 			cost{ cost } {}
 	};
@@ -38,7 +38,7 @@ private:
 		float scoreAsSeed;
 		bool inSeedConfiguration; // Is this node in the current seed configuration?
 
-		std::vector<Edge> edges;
+		std::vector<Arch> arches;
 		NodeStatus status;
 
 		// Stats about the subtree rooted on this node.
@@ -59,7 +59,7 @@ private:
 			subtreeCost ( 0.0f ) {
 			assert(neighbors.size() == edgeWeights.size());
 			for (int i = 0; i < neighbors.size(); i++)
-				edges.push_back(Edge(neighbors[i], edgeWeights[i]));
+				arches.push_back(Arch(neighbors[i], edgeWeights[i]));
 		}
 
 		bool wasSeed() { return scoreAsSeed >= 0; }
@@ -177,7 +177,7 @@ private:
 		Node& n = nodes[i];
 		n.status = Processed;
 
-		for (Edge e : n.edges) {
+		for (Arch e : n.arches) {
 			Node& m = nodes[e.target];
 			if (lockRegions && m.regionId != n.regionId) continue;
 			float elapsedDistance = n.distFromSeed + e.cost;
@@ -255,7 +255,7 @@ private:
 	float computeHeuristic(int nodeId, int seedId) {
 		float heuristic = nodes[nodeId].subtreeCost * nodes[nodeId].subtreeWeight;
 		if (greedyRelaxationType == GreedyOption::EXTENDED) {
-			for (Edge n : nodes[nodeId].edges) {
+			for (Arch n : nodes[nodeId].arches) {
 				if (nodes[n.target].parentId != seedId) continue;
 				heuristic += nodes[n.target].subtreeCost * nodes[n.target].subtreeWeight;
 			}
@@ -269,7 +269,7 @@ private:
 		for (int& s : seeds) {
 			float maxHeuristic = -INF;
 			int candidate = s;
-			for (Edge e : nodes[s].edges) {
+			for (Arch e : nodes[s].arches) {
 				if (nodes[e.target].inSeedConfiguration) continue;
 				if (nodes[s].regionId != nodes[e.target].regionId) continue;
 
@@ -299,7 +299,7 @@ private:
 			int candidate = s;
 			float minScore = nodes[s].scoreAsSeed;
 			float maxHeuristic = -INF;
-			for (Edge e : nodes[s].edges) {
+			for (Arch e : nodes[s].arches) {
 				if (nodes[e.target].inSeedConfiguration) continue;
 				if (nodes[s].regionId != nodes[e.target].regionId) continue;
 
@@ -454,8 +454,8 @@ public:
 	void moveSeedsRandomly() {
 		resetState();
 		for (int& s : seeds) {
-			int random = rand() % nodes[s].edges.size();
-			s = nodes[s].edges[random].target;
+			int random = rand() % nodes[s].arches.size();
+			s = nodes[s].arches[random].target;
 		}
 	}
 
