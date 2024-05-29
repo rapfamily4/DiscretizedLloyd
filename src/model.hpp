@@ -41,10 +41,10 @@ private:
                 VT[F(t, v)].push_back(t);
     }
 
-    void tangentFieldFromTriangle(int t, TangentSpace& field) {
+    void tangentSpaceFromTriangle(int t, TangentSpace& space) {
         TangentSpace ijAvg;
         TangentSpace::average(vfield[F(t, 0)], vfield[F(t, 1)], ijAvg);
-        TangentSpace::average(ijAvg, vfield[F(t, 2)], field);
+        TangentSpace::average(ijAvg, vfield[F(t, 2)], space);
     }
 
     float distanceGivenFuctionType(const glm::vec3& delta) {
@@ -120,8 +120,8 @@ private:
         glm::vec3 delta = glm::normalize(jBarycenter - iBarycenter) * dist;
         if (hasTangentField()) {
             TangentSpace iAvgSpace, jAvgSpace, avgSpace;
-            tangentFieldFromTriangle(i, iAvgSpace);
-            tangentFieldFromTriangle(j, jAvgSpace);
+            tangentSpaceFromTriangle(i, iAvgSpace);
+            tangentSpaceFromTriangle(j, jAvgSpace);
             TangentSpace::average(iAvgSpace, jAvgSpace, avgSpace);
             return weightedDistanceGivenFunctionType(avgSpace, delta);
         } else return distanceGivenFuctionType(delta);
@@ -134,7 +134,7 @@ private:
         glm::vec3 delta = tBarycenter - vPoint;
         if (hasTangentField()) {
             TangentSpace tAvgSpace, avgSpace;
-            tangentFieldFromTriangle(t, tAvgSpace);
+            tangentSpaceFromTriangle(t, tAvgSpace);
             TangentSpace::average(vfield[v], tAvgSpace, avgSpace);
             return weightedDistanceGivenFunctionType(avgSpace, delta);
         } else return distanceGivenFuctionType(delta);
