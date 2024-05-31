@@ -109,8 +109,8 @@ private:
             printStats(partitioner.greedyRelaxationType == DijkstraPartitioner::GreedyOption::EXTENDED ? "Greedy (ext):\t" : "Greedy:\t\t", gPerf);
         }
         else std::cout << "Greedy:\t\tDISABLED\n";
-        printStats(partitioner.optimizePreciseRelaxation ? "Precise (opt):\t" : "Precise:\t", pPerf);
-        printStats(partitioner.optimizeDijkstra ? "Dijkstra (opt):\t" : "Dijkstra:\t", dPerf);
+        printStats(partitioner.optimizePreciseMacrostep ? "Precise (opt):\t" : "Precise:\t", pPerf);
+        printStats(partitioner.optimizePreciseMicrostep ? "Dijkstra (opt):\t" : "Dijkstra:\t", dPerf);
         std::cout << "\n";
     }
 
@@ -436,8 +436,8 @@ private:
         partitioner.restoreSeeds();
         GraphType typeAtStart = graphType;
         DijkstraPartitioner::GreedyOption greedyAtStart = partitioner.greedyRelaxationType;
-        bool preciseAtStart = partitioner.optimizePreciseRelaxation;
-        bool dijkstraAtStart = partitioner.optimizeDijkstra;
+        bool preciseAtStart = partitioner.optimizePreciseMacrostep;
+        bool dijkstraAtStart = partitioner.optimizePreciseMicrostep;
 
         // Do all tests.
         // Forgive me, Father.
@@ -447,8 +447,8 @@ private:
                 for (int precise = 0; precise < 2; precise++)
                     for (int dijkstra = 0; dijkstra < 2; dijkstra++) {
                         partitioner.greedyRelaxationType = (DijkstraPartitioner::GreedyOption)greedy;
-                        partitioner.optimizePreciseRelaxation = (bool)precise;
-                        partitioner.optimizeDijkstra = (bool)dijkstra;
+                        partitioner.optimizePreciseMacrostep = (bool)precise;
+                        partitioner.optimizePreciseMicrostep = (bool)dijkstra;
                         relaxPartitioner(false);
                         partitioner.restoreSeeds();
                     }
@@ -458,8 +458,8 @@ private:
         // Restore previous parameters.
         setGraphType(typeAtStart);
         partitioner.greedyRelaxationType = greedyAtStart;
-        partitioner.optimizePreciseRelaxation = preciseAtStart;
-        partitioner.optimizeDijkstra = dijkstraAtStart;
+        partitioner.optimizePreciseMacrostep = preciseAtStart;
+        partitioner.optimizePreciseMicrostep = dijkstraAtStart;
     }
 
     void viewerSetup(igl::opengl::glfw::Viewer& viewer) {
@@ -748,8 +748,8 @@ private:
             ImGui::PopItemWidth();
             if (showAdvancedOptions) {
                 ImGui::Combo("Greedy relaxation", (int*)(&partitioner.greedyRelaxationType), "Disabled\0Enabled\0Extended\0\0");
-                ImGui::Checkbox("Optimize precise relaxation", &partitioner.optimizePreciseRelaxation);
-                ImGui::Checkbox("Optimize Dijkstra", &partitioner.optimizeDijkstra);
+                ImGui::Checkbox("Optimize precise macrostep", &partitioner.optimizePreciseMacrostep);
+                ImGui::Checkbox("Optimize precise microstep", &partitioner.optimizePreciseMicrostep);
             }
         }
 

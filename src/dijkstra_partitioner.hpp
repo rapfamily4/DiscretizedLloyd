@@ -74,12 +74,12 @@ private:
 	std::vector<Node> nodes;
 	std::vector<int> seeds;
 	std::vector<int> seedsAtStart; // The configuration of seeds at the moment it was generated (or manually set).
-	std::vector<int> prevSeeds; // The configuration of seeds at the previous iteration of the relaxation.
-	std::vector<int> prevPreciseSeeds; // The configuration of seeds at the end of the previous cycle of the precise relaxation.
+	std::vector<int> prevSeeds; // The configuration of seeds at the previous iteration of the relaxation loop.
+	std::vector<int> prevMacrostepSeeds; // The configuration of seeds at the end of the previous precise macrostep.
 	std::vector<int> frontier; // Implemented as a heap.
 	std::vector<int> sorted; // Indices of nodes sorted by their distance from seeds.
-	std::vector<float> startingScores; // The scores at the beginning of the current cycle of the precise relaxation.
-	std::vector<float> prevStartingScores; // The scores at the beginning of the previous cycle of the precise relaxation.
+	std::vector<float> macrostepScores; // The scores at the beginning of the current precise macrostep.
+	std::vector<float> prevMacrostepScores; // The scores at the beginning of the previous precise macrostep.
 	PerformanceStatistics dijkstraPerformance;
 	PerformanceStatistics greedyPerformance;
 	PerformanceStatistics precisePerformance;
@@ -90,7 +90,7 @@ private:
 		for (Node& n : nodes) {
 			n.inSeedConfiguration = false;
 
-			if (optimizeDijkstra && !inGreedyPhase && lockRegions && !seedChanged(n.regionId)) continue;
+			if (optimizePreciseMicrostep && !inGreedyPhase && lockRegions && !seedChanged(n.regionId)) continue;
 
 			n.distFromSeed = +INF;
 			n.parentId = -1;
@@ -114,7 +114,7 @@ private:
 			Node& seed = nodes[seeds[i]];
 			seed.inSeedConfiguration = true;
 
-			if (optimizeDijkstra && !inGreedyPhase && lockRegions && !seedChanged(i)) continue;
+			if (optimizePreciseMicrostep && !inGreedyPhase && lockRegions && !seedChanged(i)) continue;
 
 			seed.regionId = i;
 			seed.distFromSeed = 0;
@@ -227,7 +227,7 @@ private:
 		assert(!inGreedyPhase);
 
 		if (!lockRegions)
-			prevStartingScores = startingScores;
+			prevMacrostepScores = macrostepScores;
 
 		std::vector<float> scores = std::vector<float>(seeds.size(), 0.0f);
 		for (Node n : nodes)
@@ -239,7 +239,7 @@ private:
 		if (!lockRegions)
 			// Keep in mind that when regions are unlocked, every node hasn't been a seed before
 			// (nodes[s].wasSeed() always returns false).
-			startingScores = scores;
+			macrostepScores = scores;
 	}
 
 	bool seedChanged(int regionId) {
@@ -247,9 +247,9 @@ private:
 		return regionId >= prevSeeds.size() || prevSeeds[regionId] != seeds[regionId];
 	}
 
-	bool startingScoreChanged(int regionId) {
+	bool macrostepScoreChanged(int regionId) {
 		assert(regionId < seeds.size());
-		return regionId >= prevStartingScores.size() || prevStartingScores[regionId] != startingScores[regionId];
+		return regionId >= prevMacrostepScores.size() || prevMacrostepScores[regionId] != macrostepScores[regionId];
 	}
 
 	float computeHeuristic(int nodeId, int seedId) {
@@ -294,7 +294,7 @@ private:
 		bool movedSeed = false;
 		for (int& s : seeds) {
 			int seedId = static_cast<int>(&s - seeds.data());
-			if (optimizePreciseRelaxation && !startingScoreChanged(seedId)) continue;
+			if (optimizePreciseMacrostep && !macrostepScoreChanged(seedId)) continue;
 
 			int candidate = s;
 			float minScore = nodes[s].scoreAsSeed;
@@ -366,8 +366,8 @@ public:
 	};
 
 	GreedyOption greedyRelaxationType = GreedyOption::EXTENDED;
-	bool optimizePreciseRelaxation = true;
-	bool optimizeDijkstra = true;
+	bool optimizePreciseMacrostep = true; // It optimizes the precise macrostep by preventing converged seeds from executing movement routines.
+	bool optimizePreciseMicrostep = true; // It optimizes the precise microstep by preventing converged seeds from executing parallel Dijkstra.
 
 
 	DijkstraPartitioner() {}
@@ -385,9 +385,9 @@ public:
 		greedyFirstReset = true;
 		relaxationOver = false;
 		prevSeeds.clear();
-		prevPreciseSeeds.clear();
-		startingScores.clear();
-		prevStartingScores.clear();
+		prevMacrostepSeeds.clear();
+		macrostepScores.clear();
+		prevMacrostepScores.clear();
 		dijkstraPerformance.reset();
 		greedyPerformance.reset();
 		precisePerformance.reset();
@@ -437,7 +437,7 @@ public:
 			lockRegions = true; // ALWAYS lock regions before moving seeds
 			lockRegions = moveSeedsPrecise();
 			if (!lockRegions) {
-				if (prevPreciseSeeds != seeds) prevPreciseSeeds = seeds;
+				if (prevMacrostepSeeds != seeds) prevMacrostepSeeds = seeds;
 				else relaxationOver = true;
 				precisePerformance.recordIteration(swatch.end());
 			}
