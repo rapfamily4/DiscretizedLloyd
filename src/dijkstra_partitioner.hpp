@@ -446,8 +446,8 @@ public:
 
 	void relaxSeeds() {
 		while (!relaxationOver) {
-			partitionNodes();
 			relaxSeedsOnce();
+			partitionNodes();
 		}
 	}
 
