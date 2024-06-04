@@ -5,10 +5,12 @@
 
 class PerformanceStatistics {
 private:
-	unsigned int iterationsCount;
 	double minTime;
 	double maxTime;
 	double totTime;
+
+protected:
+	unsigned int iterationsCount;
 
 public:
 	PerformanceStatistics() :
@@ -17,7 +19,7 @@ public:
 		maxTime{ -INF },
 		totTime{ 0.0 } {}
 
-	void reset() {
+	virtual void reset() {
 		iterationsCount = 0;
 		minTime = +INF;
 		maxTime = -INF;

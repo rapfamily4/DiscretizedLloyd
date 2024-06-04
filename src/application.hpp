@@ -25,6 +25,7 @@
 #include "tangent_space.hpp"
 #include "stopwatch.hpp"
 #include "performance_stats.hpp"
+#include "batch_performance_stats.hpp"
 #include "consts.hpp"
 
 class Application {
@@ -39,6 +40,7 @@ private:
     };
 
     const unsigned int DEFAULT_REGIONS_NUMBER = 16;
+    const unsigned int MAX_PERFORMANCE_TEST_BATCHES = 128;
 
     igl::opengl::glfw::Viewer viewer;
     igl::opengl::glfw::imgui::ImGuiPlugin guiPlugin;
@@ -47,6 +49,7 @@ private:
     Model model;
     Stopwatch swatch;
     GraphType graphType = GraphType::VERTEX;
+    int performanceTestBatches = 1;
     float tangentFieldsScale = 0.25f;
     float triangulationFactor = 0;
     glm::vec3 triangulationColor{ 0.7f, 0.7f, 0.7f };
@@ -347,12 +350,14 @@ private:
         plotOverlays();
     }
 
-    void relaxPartitioner(bool plotData = true) {
+    double relaxPartitioner(bool plotData = true) {
         swatch.begin();
         partitioner.resetState();
         partitioner.relaxSeeds();
-        printPerformanceResults(swatch.end());
+        double executionTime = swatch.end();
+        printPerformanceResults(executionTime);
         if (plotData) plotOverlays();
+        return executionTime;
     }
 
     void relaxPartitionerOnce() {
@@ -441,19 +446,56 @@ private:
 
         // Do all tests.
         // Forgive me, Father.
-        for (int type = 0; type < (int)GraphType::GRAPH_TYPE_SIZE; type++) {
-            setGraphType((GraphType)type);
-            for (int greedy = 0; greedy < 3; greedy++)
-                for (int precise = 0; precise < 2; precise++)
-                    for (int dijkstra = 0; dijkstra < 2; dijkstra++) {
-                        partitioner.greedyRelaxationType = (DijkstraPartitioner::GreedyOption)greedy;
-                        partitioner.optimizePreciseMacrostep = (bool)precise;
-                        partitioner.optimizePreciseMicrostep = (bool)dijkstra;
-                        relaxPartitioner(false);
-                        partitioner.restoreSeeds();
-                    }
+        std::map<int, BatchPerformanceStatistics> testResults;
+        for (int batch = 0; batch < performanceTestBatches; batch++) {
+            generateSeeds();
+            for (int graphType = 0; graphType < (int)GraphType::GRAPH_TYPE_SIZE; graphType++) {
+                setGraphType((GraphType)graphType);
+                for (int greedyMode = 0; greedyMode < 3; greedyMode++)
+                    for (int optimizeMacrostep = 0; optimizeMacrostep < 2; optimizeMacrostep++)
+                        for (int optimizeMicrostep = 0; optimizeMicrostep < 2; optimizeMicrostep++) {
+                            partitioner.greedyRelaxationType = (DijkstraPartitioner::GreedyOption)greedyMode;
+                            partitioner.optimizePreciseMacrostep = (bool)optimizeMacrostep;
+                            partitioner.optimizePreciseMicrostep = (bool)optimizeMicrostep;
+                            double executionTime = relaxPartitioner(false);
+                            
+                            int testId = graphType * 1000 + greedyMode * 100 + optimizeMacrostep * 10 + optimizeMicrostep; // What have I done.
+                            if (testResults.find(testId) == testResults.end())
+                                testResults[testId] = BatchPerformanceStatistics();
+                            const PerformanceStatistics& dPerf = partitioner.getDijkstraPerformance();
+                            const PerformanceStatistics& gPerf = partitioner.getGreedyPerformance();
+                            const PerformanceStatistics& pPerf = partitioner.getPrecisePerformance();
+                            std::vector<int> counts;
+                            counts.push_back(dPerf.getIterations());
+                            counts.push_back(gPerf.getIterations());
+                            counts.push_back(pPerf.getIterations());
+
+                            testResults[testId].recordIteration(executionTime, counts);
+                            partitioner.restoreSeeds();
+                        }
+            }
         }
         plotOverlays();
+
+        // Write log with performance results.
+        std::ofstream ofile{ "performance_log.txt" };
+        if (ofile) {
+            ofile << "runs_count = " << performanceTestBatches << " \n";
+            ofile << "seeds_count = " << partitioner.getSeeds().size() << " \n";
+            ofile << "vertices_count = " << model.getVerticesMatrix().rows() << " \n";
+            ofile << "tris_count = " << model.getFacesMatrix().rows() << " \n\n";
+            ofile << "graph_type\t greedy_mode\t opt_macro\t opt_micro\t time_min\t time_avg\t time_max\t part_min\t part_avg\t part_max\t " <<
+                    "greedy_min\t greedy_avg\t greedy_max\t precise_min\t precise_avg\t precise_max\t\n";
+            for (std::map<int, BatchPerformanceStatistics>::iterator t = testResults.begin(); t != testResults.end(); t++) {
+                ofile << (t->first / 1000) << ' ' << (t->first / 100 % 10) << ' ' << (t->first / 10 % 10) << ' ' << (t->first % 10) << ' ' <<
+                    t->second.getMinTime() << ' ' << t->second.getAvgTime() << ' ' << t->second.getMaxTime() << ' ' <<
+                    t->second.getMinPhaseCount(0) << ' ' << t->second.getAvgPhaseCount(0) << ' ' << t->second.getMaxPhaseCount(0) << ' ' <<
+                    t->second.getMinPhaseCount(1) << ' ' << t->second.getAvgPhaseCount(1) << ' ' << t->second.getMaxPhaseCount(1) << ' ' <<
+                    t->second.getMinPhaseCount(2) << ' ' << t->second.getAvgPhaseCount(2) << ' ' << t->second.getMaxPhaseCount(2) << "\n";
+            }
+            std::cout << "-----------\n";
+            std::cout << "Performance log has been written in ./performance_log.txt\n\n";
+        }
 
         // Restore previous parameters.
         setGraphType(typeAtStart);
@@ -755,6 +797,8 @@ private:
 
         // Tests
         if (ImGui::CollapsingHeader("Tests", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (showAdvancedOptions)
+                ImGui::DragInt("Performance test batches", &(performanceTestBatches), 1.0f, 1, MAX_PERFORMANCE_TEST_BATCHES);
             if (ImGui::Button("Run Performance Test", ImVec2(-1, 0)))
                 runPerformanceTest(viewer.data());
             if (ImGui::Checkbox("Ground truth", &showGroundTruth)) {
