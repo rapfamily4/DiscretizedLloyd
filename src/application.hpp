@@ -478,23 +478,23 @@ private:
         plotOverlays();
 
         // Write log with performance results.
-        std::ofstream ofile{ "performance_log.txt" };
+        std::ofstream ofile{ "data.csv" };
         if (ofile) {
-            ofile << "runs_count = " << performanceTestBatches << " \n";
-            ofile << "seeds_count = " << partitioner.getSeeds().size() << " \n";
-            ofile << "vertices_count = " << model.getVerticesMatrix().rows() << " \n";
-            ofile << "tris_count = " << model.getFacesMatrix().rows() << " \n\n";
-            ofile << "graph_type\t greedy_mode\t opt_macro\t opt_micro\t time_min\t time_avg\t time_max\t part_min\t part_avg\t part_max\t " <<
-                    "greedy_min\t greedy_avg\t greedy_max\t precise_min\t precise_avg\t precise_max\t\n";
+            ofile << "# runs_count = " << performanceTestBatches << " \n";
+            ofile << "# seeds_count = " << partitioner.getSeeds().size() << " \n";
+            ofile << "# vertices_count = " << model.getVerticesMatrix().rows() << " \n";
+            ofile << "# tris_count = " << model.getFacesMatrix().rows() << " \n";
+            ofile << "graph_type,greedy_mode,opt_macro,opt_micro,time_min,time_avg,time_max,part_min,part_avg,part_max," <<
+                    "greedy_min,greedy_avg,greedy_max,precise_min,precise_avg,precise_max\n";
             for (std::map<int, BatchPerformanceStatistics>::iterator t = testResults.begin(); t != testResults.end(); t++) {
-                ofile << (t->first / 1000) << ' ' << (t->first / 100 % 10) << ' ' << (t->first / 10 % 10) << ' ' << (t->first % 10) << ' ' <<
-                    t->second.getMinTime() << ' ' << t->second.getAvgTime() << ' ' << t->second.getMaxTime() << ' ' <<
-                    t->second.getMinPhaseCount(0) << ' ' << t->second.getAvgPhaseCount(0) << ' ' << t->second.getMaxPhaseCount(0) << ' ' <<
-                    t->second.getMinPhaseCount(1) << ' ' << t->second.getAvgPhaseCount(1) << ' ' << t->second.getMaxPhaseCount(1) << ' ' <<
-                    t->second.getMinPhaseCount(2) << ' ' << t->second.getAvgPhaseCount(2) << ' ' << t->second.getMaxPhaseCount(2) << "\n";
+                ofile << (t->first / 1000) << ',' << (t->first / 100 % 10) << ',' << (t->first / 10 % 10) << ',' << (t->first % 10) << ',' <<
+                    t->second.getMinTime() << ',' << t->second.getAvgTime() << ',' << t->second.getMaxTime() << ',' <<
+                    t->second.getMinPhaseCount(0) << ',' << t->second.getAvgPhaseCount(0) << ',' << t->second.getMaxPhaseCount(0) << ',' <<
+                    t->second.getMinPhaseCount(1) << ',' << t->second.getAvgPhaseCount(1) << ',' << t->second.getMaxPhaseCount(1) << ',' <<
+                    t->second.getMinPhaseCount(2) << ',' << t->second.getAvgPhaseCount(2) << ',' << t->second.getMaxPhaseCount(2) << "\n";
             }
             std::cout << "-----------\n";
-            std::cout << "Performance log has been written in ./performance_log.txt\n\n";
+            std::cout << "Results have been written in ./data.csv\n\n";
         }
 
         // Restore previous parameters.
