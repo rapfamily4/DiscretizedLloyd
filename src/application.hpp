@@ -76,9 +76,9 @@ private:
         return type == GraphType::VERTEX_DENSE || type == GraphType::TRIANGLE_DENSE;
     }
 
-    void printPerformanceResults(double runningTime) {
+    void logRunResults(double runningTime) {
         std::cout << "-----------\n";
-        std::cout << "Voronoi: " << runningTime << "ms\n";
+        std::cout << "Relaxation: " << runningTime << "ms\n";
         std::cout << "Graph type: ";
         switch (graphType) {
         case GraphType::VERTEX:
@@ -105,9 +105,9 @@ private:
             std::cout << header
                 << "iterations: " << perf.getIterations()
                 << ", min: " << perf.getMinTime() << "ms"
-                << ", max: " << perf.getMaxTime() << "ms"
-                << ", avg: " << perf.getAvgTime() << "ms\n";
-            };
+                << ", avg: " << perf.getAvgTime() << "ms"
+                << ", max: " << perf.getMaxTime() << "ms\n";
+        };
         if (partitioner.greedyRelaxationType != DijkstraPartitioner::GreedyOption::DISABLED) {
             printStats(partitioner.greedyRelaxationType == DijkstraPartitioner::GreedyOption::EXTENDED ? "Greedy (ext):\t" : "Greedy:\t\t", gPerf);
         }
@@ -115,6 +115,20 @@ private:
         printStats(partitioner.optimizePreciseMacrostep ? "Precise (opt):\t" : "Precise:\t", pPerf);
         printStats(partitioner.optimizePreciseMicrostep ? "Dijkstra (opt):\t" : "Dijkstra:\t", dPerf);
         std::cout << "\n";
+
+        // Write log with run results.
+        std::fstream file{ "./runs_log.csv", std::ios::in };
+        bool accessible = file.is_open(); // This does not strictly state whether a file exists or not... but whatever.
+        file.close();
+        file = std::fstream{ "./runs_log.csv", std::ios::out | std::ios::app };
+        if (file) {
+            if (!accessible)
+                file << "seeds,run_time,greedy_steps,avg_greedy_time,precise_macrosteps,avg_precise_time,partition_iters,avg_partition_time\n";
+            file << partitioner.getSeeds().size() << ',' << runningTime << ',' << gPerf.getIterations() << ',' << gPerf.getAvgTime() << ',' <<
+                pPerf.getIterations() << ',' << pPerf.getAvgTime() << ',' << dPerf.getIterations() << ',' << dPerf.getAvgTime() << '\n';
+            file.close();
+        } else
+            std::cout << "Failed to log this run!\n";
     }
 
     void groundTruth(std::vector<int>& regionAssignments, Eigen::MatrixXd& barycenters) {
@@ -355,7 +369,7 @@ private:
         partitioner.resetState();
         partitioner.relaxSeeds();
         double executionTime = swatch.end();
-        printPerformanceResults(executionTime);
+        logRunResults(executionTime);
         if (plotData) plotOverlays();
         return executionTime;
     }
@@ -457,9 +471,12 @@ private:
                             partitioner.greedyRelaxationType = (DijkstraPartitioner::GreedyOption)greedyMode;
                             partitioner.optimizePreciseMacrostep = (bool)optimizeMacrostep;
                             partitioner.optimizePreciseMicrostep = (bool)optimizeMicrostep;
-                            double executionTime = relaxPartitioner(false);
-                            
                             int testId = graphType * 1000 + greedyMode * 100 + optimizeMacrostep * 10 + optimizeMicrostep; // What have I done.
+                            
+                            testResults[testId].beginIteration();
+                            relaxPartitioner(false);
+                            testResults[testId].endIteration();
+
                             if (testResults.find(testId) == testResults.end())
                                 testResults[testId] = BatchPerformanceStatistics();
                             const PerformanceStatistics& dPerf = partitioner.getDijkstraPerformance();
@@ -469,8 +486,8 @@ private:
                             counts.push_back(dPerf.getIterations());
                             counts.push_back(gPerf.getIterations());
                             counts.push_back(pPerf.getIterations());
+                            testResults[testId].recordPhaseCounts(counts);
 
-                            testResults[testId].recordIteration(executionTime, counts);
                             partitioner.restoreSeeds();
                         }
             }
@@ -478,7 +495,7 @@ private:
         plotOverlays();
 
         // Write log with performance results.
-        std::ofstream ofile{ "data.csv" };
+        std::ofstream ofile{ "./performance_test.csv" };
         if (ofile) {
             ofile << "# batches_count = " << performanceTestBatches << " \n";
             ofile << "# seeds_count = " << partitioner.getSeeds().size() << " \n";
@@ -494,7 +511,7 @@ private:
                     t->second.getMinPhaseCount(2) << ',' << t->second.getAvgPhaseCount(2) << ',' << t->second.getMaxPhaseCount(2) << "\n";
             }
             std::cout << "-----------\n";
-            std::cout << "Results have been written in ./data.csv\n\n";
+            std::cout << "Results have been written in ./performance_test.csv\n\n";
         }
 
         // Restore previous parameters.

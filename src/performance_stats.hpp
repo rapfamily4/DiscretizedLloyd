@@ -2,12 +2,14 @@
 #define PERFORMANCE_STATS_H
 
 #include "consts.hpp"
+#include "stopwatch.hpp"
 
 class PerformanceStatistics {
 private:
 	double minTime;
 	double maxTime;
 	double totTime;
+	Stopwatch swatch;
 
 protected:
 	unsigned int iterationsCount;
@@ -26,7 +28,12 @@ public:
 		totTime = 0.0;
 	}
 
-	void recordIteration(double timeInMillis) {
+	void beginIteration() {
+		swatch.begin();
+	}
+
+	void endIteration() {
+		double timeInMillis{ swatch.end() };
 		if (minTime > timeInMillis)
 			minTime = timeInMillis;
 		if (maxTime < timeInMillis)

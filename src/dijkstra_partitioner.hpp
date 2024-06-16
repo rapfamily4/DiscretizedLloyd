@@ -83,7 +83,6 @@ private:
 	PerformanceStatistics dijkstraPerformance;
 	PerformanceStatistics greedyPerformance;
 	PerformanceStatistics precisePerformance;
-	Stopwatch swatch;
 
 
 	void resetNodes() {
@@ -406,7 +405,7 @@ public:
 	}
 
 	void partitionNodes() {
-		swatch.begin();
+		dijkstraPerformance.beginIteration();
 		frontier.clear();
 		resetNodes();
 		initSeedNodes();
@@ -417,7 +416,7 @@ public:
 		}
 
 		assert(frontier.empty());
-		dijkstraPerformance.recordIteration(swatch.end());
+		dijkstraPerformance.endIteration();
 	}
 
 	void relaxSeedsOnce() {
@@ -427,27 +426,37 @@ public:
 		sortNodeIdsByDistance();
 		updateSubtreeInfo();
 		if (inGreedyPhase) {
-			swatch.begin();
 			scoreAllSeedsGreedy();
 			inGreedyPhase = moveSeedsGreedy();
-			greedyPerformance.recordIteration(swatch.end());
 		} else {
-			if (!lockRegions) swatch.begin();
 			scoreAllSeedsPrecise();
 			lockRegions = true; // ALWAYS lock regions before moving seeds
 			lockRegions = moveSeedsPrecise();
 			if (!lockRegions) {
 				if (prevMacrostepSeeds != seeds) prevMacrostepSeeds = seeds;
 				else relaxationOver = true;
-				precisePerformance.recordIteration(swatch.end());
 			}
 		}
 	}
 
 	void relaxSeeds() {
 		while (!relaxationOver) {
+			// Begin to track relaxation steps
+			bool oldGreedy = inGreedyPhase;
+			if (inGreedyPhase)
+				greedyPerformance.beginIteration();
+			else if (!lockRegions)
+				precisePerformance.beginIteration();
+			
+			// Relaxation loop
 			relaxSeedsOnce();
 			partitionNodes();
+
+			// Finish to track relaxation steps
+			if (inGreedyPhase || oldGreedy != inGreedyPhase)
+				greedyPerformance.endIteration();
+			else if (!lockRegions)
+				precisePerformance.endIteration();
 		}
 	}
 

@@ -22,12 +22,11 @@ public:
 		totPhaseCount.clear();
 	}
 
-	void recordIteration(double timeInMillis, std::vector<int>& counts) {
+	void recordPhaseCounts(std::vector<int>& counts) {
 		minPhaseCount.resize(counts.size(), INT_MAX);
 		maxPhaseCount.resize(counts.size(), 0);
 		totPhaseCount.resize(counts.size(), 0);
 		assert(counts.size() == minPhaseCount.size() && counts.size() == maxPhaseCount.size() && counts.size() == totPhaseCount.size());
-		PerformanceStatistics::recordIteration(timeInMillis);
 		for (int i = 0; i < counts.size(); i++) {
 			if (minPhaseCount[i] > counts[i])
 				minPhaseCount[i] = counts[i];
